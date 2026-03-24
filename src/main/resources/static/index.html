@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POC Recherche Documentaire</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="page-shell">
+        <div class="main-area">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <div class="logo-block logo-inline" aria-label="Portail documentaire">
+                        <div class="logo-svg" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" focusable="false" fill="none">
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M14.8884 101.372C11.4714 83.1768 1.82896 61.7668 14.8364 48.587C28.2997 34.9452 51.8456 38.5 69.4699 46.0677C83.7802 52.2124 89.3129 68.0719 94.4355 82.7661C98.5552 94.5835 99.2362 106.781 94.7006 118.442C89.6573 131.408 82.3371 145.084 68.8498 148.546C55.1799 152.055 41.6489 144.076 31.0245 134.788C21.2227 126.219 17.2897 114.159 14.8884 101.372Z" fill="#A0B2EC" fill-opacity="0.16"/>
+                                <path d="M134.02 26.1579C143.216 37.8291 149.362 52.6506 151.388 67.2498C155.366 95.9281 133.148 124.519 103.481 131.039C89.5222 134.106 73.9301 130.748 65.0224 120.067C58.4294 112.163 58.0887 101.722 61.5658 92.1606C64.4989 84.0965 70.0261 77.1935 73.5948 69.406C79.0514 57.5003 77.8714 45.1716 80.9607 32.9169C82.654 26.1985 86.4874 18.6388 92.8475 14.7705C98.8848 11.0977 106.569 10.2636 113.271 11.8981C121.731 13.9608 128.786 19.5161 134.02 26.1579Z" fill="#A0B2EC" fill-opacity="0.16"/>
+                                <path d="M130.402 72.8366L130.402 131.085C130.402 134.266 127.823 136.845 124.642 136.845L35.3616 136.845C32.1804 136.845 29.6016 134.266 29.6016 131.085L29.6016 61.3166C29.6016 58.1355 32.1804 55.5566 35.3616 55.5566L58.365 55.5566C61.5462 55.5566 64.125 58.1355 64.125 61.3166L64.125 64.1966C64.125 65.7872 65.4144 67.0766 67.005 67.0766L124.642 67.0767C127.823 67.0767 130.402 69.6555 130.402 72.8366Z" fill="#0C419A"/>
+                                <path d="M130.402 72.8366L130.402 131.085C130.402 134.266 127.823 136.845 124.642 136.845L35.3616 136.845C32.1804 136.845 29.6016 134.266 29.6016 131.085L29.6016 61.3166C29.6016 58.1355 32.1804 55.5566 35.3616 55.5566L58.365 55.5566C61.5462 55.5566 64.125 58.1355 64.125 61.3166L64.125 64.1966C64.125 65.7872 65.4144 67.0766 67.005 67.0766L124.642 67.0767C127.823 67.0767 130.402 69.6555 130.402 72.8366Z" fill="black" fill-opacity="0.3"/>
+                                <g filter="url(#filter0_d_7993_14626)">
+                                    <path d="M48.0016 136H112.722C116.257 136 119.122 133.135 119.122 129.6V30.4C119.122 26.8654 116.257 24 112.722 24H48.0016C44.4669 24 41.6016 26.8654 41.6016 30.4V129.6C41.6016 133.135 44.4669 136 48.0016 136Z" fill="white"/>
+                                </g>
+                                <rect x="86.4023" y="32" width="24.8" height="6.4" rx="3.2" fill="#0C419A"/>
+                                <rect x="86.4023" y="45.5996" width="24.8" height="4.8" rx="2.4" fill="#BDCCF8"/>
+                                <rect x="86.4023" y="57.5996" width="8.8" height="4.8" rx="2.4" fill="#BDCCF8"/>
+                                <circle cx="65.6016" cy="48" r="16" fill="#F9FAFF"/>
+                                <path d="M60.4516 43.032C60.4516 40.474 62.5782 38.4004 65.2016 38.4004C67.8249 38.4004 69.9516 40.474 69.9516 43.032C69.9516 45.5899 67.8249 47.6635 65.2016 47.6635C62.5782 47.6635 60.4516 45.5899 60.4516 43.032ZM65.2016 45.8109C66.7756 45.8109 68.0516 44.5667 68.0516 43.032C68.0516 41.4972 66.7756 40.253 65.2016 40.253C63.6276 40.253 62.3516 41.4972 62.3516 43.032C62.3516 44.5667 63.6276 45.8109 65.2016 45.8109Z" fill="#0C419A"/>
+                                <path d="M59.8276 50.7604C58.6332 51.9249 57.8775 53.4371 57.6639 55.0531C57.5951 55.5732 58.0269 56.0004 58.5516 56.0004C59.0762 56.0004 59.4931 55.5719 59.5846 55.0552C59.7834 53.932 60.3334 52.8872 61.1711 52.0704C62.24 51.0281 63.6898 50.4425 65.2016 50.4425C66.7133 50.4425 68.1631 51.0281 69.2321 52.0704C70.0697 52.8872 70.6198 53.932 70.8186 55.0552C70.91 55.5719 71.3269 56.0004 71.8516 56.0004C72.3762 56.0004 72.808 55.5732 72.7392 55.0531C72.5257 53.4371 71.7699 51.9249 70.5756 50.7604C69.1503 49.3706 67.2172 48.5899 65.2016 48.5899C63.1859 48.5899 61.2528 49.3706 59.8276 50.7604Z" fill="#0C419A"/>
+                                <rect x="49.6016" y="72" width="9.6" height="6.4" rx="3.2" fill="#A05BB6"/>
+                                <rect x="49.6016" y="84.8008" width="9.6" height="6.4" rx="3.2" fill="#A05BB6"/>
+                                <rect x="63.2031" y="72.8008" width="48" height="4.8" rx="2.4" fill="#BDCCF8"/>
+                                <rect x="63.2031" y="85.5996" width="24.8" height="4.8" rx="2.4" fill="#BDCCF8"/>
+                                <rect x="49.6016" y="99.1992" width="61.6" height="23.2" rx="2.03303" fill="#F9FAFF"/>
+                                <path d="M56 113.599H62.0785C62.3927 113.599 62.6778 113.415 62.8074 113.129L64.9271 108.445C65.2133 107.813 66.1142 107.82 66.39 108.457L70.5672 118.105C70.8575 118.775 71.8206 118.738 72.0579 118.047L73.4001 114.139C73.5111 113.816 73.815 113.599 74.1567 113.599H76.6115C76.9128 113.599 77.1886 113.43 77.3249 113.161L81.5559 104.821C81.8708 104.2 82.7733 104.249 83.0182 104.901L87.4175 116.601C87.6678 117.267 88.5975 117.299 88.8937 116.652L90.0781 114.066C90.2084 113.782 90.4925 113.599 90.8054 113.599H94.1971C94.4984 113.599 94.7742 113.43 94.9105 113.161L96.6127 109.806C96.909 109.222 97.7433 109.222 98.0396 109.806L99.7417 113.161C99.8781 113.43 100.154 113.599 100.455 113.599H104.8" stroke="#A05BB6" stroke-width="2" stroke-linecap="round"/>
+                                <path d="M29.6021 72.8367L29.6021 131.085C29.6021 134.266 32.181 136.845 35.3621 136.845L124.642 136.845C127.824 136.845 130.402 134.266 130.402 131.085L130.402 61.3166C130.402 58.1355 127.824 55.5566 124.642 55.5566L109.785 55.5566C108.257 55.5566 106.792 56.1635 105.712 57.2437L96.7224 66.2331C96.1823 66.7732 95.4498 67.0766 94.686 67.0766L35.3621 67.0766C32.181 67.0766 29.6021 69.6555 29.6021 72.8367Z" fill="#0C419A"/>
+                                <path d="M77.4423 110.24H83.2023C84.3481 110.24 85.4469 109.785 86.257 108.975C87.0672 108.165 87.5223 107.066 87.5223 105.92C87.5223 104.774 87.0672 103.675 86.257 102.865C85.4469 102.055 84.3481 101.6 83.2023 101.6H73.1223C72.7404 101.6 72.3742 101.752 72.1041 102.022C71.8341 102.292 71.6823 102.658 71.6823 103.04C71.6823 103.422 71.8341 103.788 72.1041 104.058C72.3742 104.328 72.7404 104.48 73.1223 104.48H83.2023C83.5843 104.48 83.9505 104.632 84.2206 104.902C84.4906 105.172 84.6423 105.538 84.6423 105.92C84.6423 106.302 84.4906 106.668 84.2206 106.938C83.9505 107.208 83.5843 107.36 83.2023 107.36H77.4423C76.2966 107.36 75.1978 107.815 74.3876 108.625C73.5775 109.435 73.1223 110.534 73.1223 111.68C73.1223 112.826 73.5775 113.925 74.3876 114.735C75.1978 115.545 76.2966 116 77.4423 116H83.2023C83.5843 116 83.9505 115.848 84.2206 115.578C84.4906 115.308 84.6423 114.942 84.6423 114.56C84.6423 114.178 84.4906 113.812 84.2206 113.542C83.9505 113.272 83.5843 113.12 83.2023 113.12H77.4423C77.0604 113.12 76.6942 112.968 76.4241 112.698C76.1541 112.428 76.0023 112.062 76.0023 111.68C76.0023 111.298 76.1541 110.932 76.4241 110.662C76.6942 110.392 77.0604 110.24 77.4423 110.24Z" fill="#BDCCF8"/>
+                                <path d="M81.0423 98.72C82.26 98.7196 83.4462 98.3334 84.4307 97.6167C85.4151 96.9001 86.1471 95.8899 86.5215 94.7312C86.6909 94.2171 87.0178 93.7693 87.4559 93.4514C87.894 93.1335 88.4211 92.9616 88.9623 92.96H101.822C101.475 95.3595 100.276 97.5537 98.4429 99.1406C96.61 100.727 94.2667 101.601 91.8423 101.6C91.4604 101.6 91.0942 101.752 90.8241 102.022C90.5541 102.292 90.4023 102.658 90.4023 103.04C90.4023 103.422 90.5541 103.788 90.8241 104.058C91.0942 104.328 91.4604 104.48 91.8423 104.48C95.2796 104.48 98.576 103.115 101.006 100.684C103.437 98.2536 104.802 94.9572 104.802 91.52C104.802 91.1381 104.651 90.7718 104.381 90.5018C104.111 90.2317 103.744 90.08 103.362 90.08H88.9623C87.7447 90.0804 86.5584 90.4666 85.574 91.1833C84.5896 91.8999 83.8576 92.9101 83.4831 94.0688C83.3138 94.5829 82.9869 95.0307 82.5488 95.3486C82.1107 95.6665 81.5836 95.8384 81.0423 95.84H78.1623C77.6211 95.8384 77.094 95.6665 76.6559 95.3486C76.2178 95.0307 75.8909 94.5829 75.7215 94.0688C75.3471 92.9101 74.6151 91.8999 73.6307 91.1833C72.6462 90.4666 71.46 90.0804 70.2423 90.08H55.8423C55.4604 90.08 55.0942 90.2317 54.8241 90.5018C54.5541 90.7718 54.4023 91.1381 54.4023 91.52C54.4023 94.9572 55.7678 98.2536 58.1982 100.684C60.6287 103.115 63.9251 104.48 67.3623 104.48C67.7443 104.48 68.1105 104.328 68.3806 104.058C68.6506 103.788 68.8023 103.422 68.8023 103.04C68.8023 102.658 68.6506 102.292 68.3806 102.022C68.1105 101.752 67.7443 101.6 67.3623 101.6C64.938 101.601 62.5947 100.727 60.7618 99.1406C58.929 97.5537 57.7295 95.3595 57.3831 92.96H70.2423C70.7836 92.9616 71.3107 93.1335 71.7488 93.4514C72.1869 93.7693 72.5138 94.2171 72.6831 94.7312C73.0576 95.8899 73.7896 96.9001 74.774 97.6167C75.7584 98.3334 76.9447 98.7196 78.1623 98.72H81.0423Z" fill="#BDCCF8"/>
+                                <path d="M79.6023 123.2C79.2204 123.2 78.8542 123.048 78.5841 122.778C78.3141 122.508 78.1623 122.142 78.1623 121.76V87.2C78.1623 86.8181 78.3141 86.4518 78.5841 86.1818C78.8542 85.9117 79.2204 85.76 79.6023 85.76C79.9843 85.76 80.3505 85.9117 80.6206 86.1818C80.8906 86.4518 81.0423 86.8181 81.0423 87.2V121.76C81.0423 122.142 80.8906 122.508 80.6206 122.778C80.3505 123.048 79.9843 123.2 79.6023 123.2Z" fill="#BDCCF8"/>
+                                <path d="M79.6023 87.2C78.8903 87.2 78.1943 86.9889 77.6023 86.5933C77.0103 86.1977 76.5489 85.6355 76.2764 84.9777C76.0039 84.3198 75.9326 83.596 76.0715 82.8977C76.2104 82.1993 76.5533 81.5579 77.0568 81.0544C77.5602 80.5509 78.2017 80.2081 78.9 80.0692C79.5984 79.9303 80.3222 80.0016 80.98 80.274C81.6378 80.5465 82.2001 81.0079 82.5956 81.5999C82.9912 82.192 83.2023 82.888 83.2023 83.6C83.2023 84.5548 82.8231 85.4705 82.1479 86.1456C81.4728 86.8207 80.5571 87.2 79.6023 87.2ZM79.6023 82.0571C79.2972 82.0571 78.9989 82.1476 78.7452 82.3172C78.4915 82.4867 78.2937 82.7277 78.1769 83.0096C78.0602 83.2915 78.0296 83.6017 78.0891 83.901C78.1487 84.2003 78.2956 84.4752 78.5114 84.691C78.7272 84.9067 79.0021 85.0537 79.3013 85.1132C79.6006 85.1727 79.9108 85.1422 80.1928 85.0254C80.4747 84.9086 80.7157 84.7109 80.8852 84.4572C81.0547 84.2034 81.1452 83.9051 81.1452 83.6C81.1452 83.1908 80.9827 82.7984 80.6933 82.509C80.404 82.2197 80.0115 82.0571 79.6023 82.0571Z" fill="#BDCCF8"/>
+                                <defs>
+                                    <filter id="filter0_d_7993_14626" x="29.6343" y="18.0164" width="101.454" height="135.934" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+                                        <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+                                        <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+                                        <feOffset dy="5.98361"/>
+                                        <feGaussianBlur stdDeviation="5.98361"/>
+                                        <feColorMatrix type="matrix" values="0 0 0 0 0.0470588 0 0 0 0 0.254902 0 0 0 0 0.603922 0 0 0 0.1 0"/>
+                                        <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_7993_14626"/>
+                                        <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_7993_14626" result="shape"/>
+                                    </filter>
+                                </defs>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="page-title">
+                        <span class="page-eyebrow">Portail documentaire</span>
+                        <h1>Bibliotheque de documents</h1>
+                        <p>Centralisez, indexez et retrouvez rapidement vos documents depuis une interface unique.</p>
+                    </div>
+                </div>
+                <div class="topbar-actions" style="visibility: hidden;">
+                    <button class="btn btn-ghost">Créer un dossier</button>
+                    <button class="btn">Ajouter un document</button>
+                </div>
+            </header>
+
+            <section class="toolbar">
+                <div class="toolbar-group">
+                    <label class="control">
+                        Filtrer par catégorie
+                        <select class="select-box" id="filterCategory">
+                            <option>Tout</option>
+                            <option>Facture</option>
+                            <option>Rapport</option>
+                            <option>Contrat</option>
+                        </select>
+                    </label>
+                    <label class="control autocomplete-control">
+                        Filtrer par auteur
+                        <input type="text" class="search-box" id="filterAuthor" placeholder="Ex. : Alice Martin" />
+                    </label>
+                    <label class="control">
+                        Date de dépôt - début
+                        <input type="date" class="search-box" id="filterDateFrom" />
+                    </label>
+                    <label class="control">
+                        Date de dépôt - fin
+                        <input type="date" class="search-box" id="filterDateTo" />
+                    </label>
+                    <label class="control">
+                        Trier par
+                        <select class="select-box" id="filterSort">
+                            <option>Plus récents</option>
+                            <option>Plus anciens</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="toolbar-info">
+                    <span class="info-pill">Affichage des documents indexés</span>
+                </div>
+            </section>
+
+            <main class="content-grid">
+                <section class="panel tab-panel is-active" id="tab-search" data-tab-panel="search">
+                    <div class="tab-header">
+                        <button class="tab-button is-active" type="button" data-tab="search">Recherche</button>
+                        <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
+                    </div>
+                    <div class="panel-header">
+                        <div>
+                            <h2>Rechercher dans les documents</h2>
+                            <p class="panel-subtitle">Posez une question ou utilisez les suggestions pour gagner du temps.</p>
+                        </div>
+                        <span class="panel-tag">Étape 1</span>
+                    </div>
+
+                    <div class="field">
+                        <label for="searchQuery">Votre recherche</label>
+                        <textarea class="search-box" id="searchQuery" rows="4" placeholder="Ex. : facture client, rapport annuel, Alice Martin..."></textarea>
+                        <div class="chip-group" aria-label="Suggestions de recherche">
+                            <button class="chip" type="button" data-query="facture client">Facture client</button>
+                            <button class="chip" type="button" data-query="rapport trimestriel">Rapport trimestriel</button>
+                            <button class="chip" type="button" data-query="Alice Martin">Alice Martin</button>
+                            <button class="chip" type="button" data-query="contrat fournisseur">Contrat fournisseur</button>
+                        </div>
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn" id="searchBtn">Lancer la recherche</button>
+                        <button class="btn btn-ghost" id="clearSearchBtn" type="button">Effacer</button>
+                    </div>
+
+                    <div class="loading" id="searchLoading">
+                        <div class="spinner"></div>
+                        <p>Recherche en cours...</p>
+                    </div>
+                    <div class="error" id="searchError"></div>
+                    <div class="result-box" id="searchResult">
+                        <div class="results-header" id="searchResultsHeader" style="display: none;">
+                            <span class="results-count" id="resultsCount"></span>
+                            <span class="results-meta">Affichage des extraits les plus pertinents</span>
+                        </div>
+                        <div id="searchResultContent"></div>
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="tab-index" data-tab-panel="index">
+                    <div class="tab-header">
+                        <button class="tab-button" type="button" data-tab="search">Recherche</button>
+                        <button class="tab-button is-active" type="button" data-tab="index">Ajouter un document</button>
+                    </div>
+                    <div class="panel-header">
+                        <div>
+                            <h2>Ajouter un document</h2>
+                            <p class="panel-subtitle">Déposez un fichier et complétez les informations avant indexation.</p>
+                        </div>
+                        <span class="panel-tag">Étape 2</span>
+                    </div>
+                    <div class="info-banner" role="note">
+                        <strong>Démo :</strong> cette étape est habituellement automatique. Nous l’affichons ici pour montrer le processus d’indexation pendant la démonstration.
+                    </div>
+
+                    <div class="field">
+                        <label for="indexFile">Fichier a indexer</label>
+                        <label for="indexFile" class="file-drop" id="fileDrop">
+                            <span class="file-drop-title">Glissez-déposez un fichier ou cliquez pour parcourir</span>
+                            <span class="file-drop-meta">PDF, image ou scan — taille max recommandée 10 Mo</span>
+                        </label>
+                        <input type="file" id="indexFile">
+                        <div class="file-name" id="fileName"></div>
+                    </div>
+
+                    <div class="input-grid">
+                        <div class="field">
+                            <label for="documentTitle">Titre du document</label>
+                            <input type="text" class="search-box" id="documentTitle" placeholder="Ex. : Rapport d'activite Q1" />
+                        </div>
+                        <div class="field">
+                            <label for="documentAuthor">Auteur du dépôt</label>
+                            <input type="text" class="search-box" id="documentAuthor" placeholder="Ex. : Alice Martin" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="documentDate">Date de dépôt</label>
+                        <input type="date" class="search-box" id="documentDate" />
+                    </div>
+
+                    <div class="field">
+                        <label for="indexType">Type de document</label>
+                        <select class="select-box" id="indexType">
+                            <option value="FACTURE" selected>Facture (OCR)</option>
+                            <option value="RAPPORT">Rapport (OCR)</option>
+                            <option value="CONTRAT">Contrat (OCR)</option>
+                        </select>
+                    </div>
+
+                    <div class="field" style="display: none">
+                        <label for="indexOcrType">Moteur OCR PDF</label>
+                        <select class="select-box" id="indexOcrType">
+                            <option value="pdfbox" selected>PDFBox</option>
+                            <option value="tika">Tika</option>
+                        </select>
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn" id="indexBtn">Indexer le document</button>
+                        <button class="btn btn-ghost" id="resetIndexBtn" type="button">Réinitialiser</button>
+                    </div>
+
+                    <div class="loading" id="indexLoading">
+                        <div class="spinner"></div>
+                        <p>Indexation en cours...</p>
+                    </div>
+                    <div class="error" id="indexError"></div>
+                    <div class="success-message" id="indexSuccess"></div>
+                    <div class="result-box" id="indexResult">
+                        <pre id="indexResultContent"></pre>
+                    </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
