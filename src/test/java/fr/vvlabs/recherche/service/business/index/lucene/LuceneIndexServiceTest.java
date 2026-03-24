@@ -71,6 +71,7 @@ class LuceneIndexServiceTest {
         directory = new ByteBuffersDirectory();
         lenient().when(luceneConfig.getDocumentsAnalyzer()).thenReturn(analyzer);
         lenient().when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+        lenient().when(luceneConfig.getDocumentsIndexLock()).thenReturn(new Object());
         service = new LuceneIndexService(indexRepository, luceneConfig, cipherService, luceneAutocompleteService);
     }
 

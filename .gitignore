@@ -1,4 +1,5 @@
 /.idea
 /target
 /storage/documents
+/storage/database
 /lucene-suggest

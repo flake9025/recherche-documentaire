@@ -93,6 +93,10 @@ public class DocumentService {
     }
 
     public String getFileText(DocumentDTO documentDTO) throws IOException {
+        if(!ocrServiceFactory.isOcrEnabled()) {
+            log.info("OCR is disabled");
+            return "";
+        }
         return getFileText(documentDTO, ocrServiceFactory.getDefaultOCRService().getType());
     }
 

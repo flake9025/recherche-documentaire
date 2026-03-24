@@ -31,6 +31,15 @@ java -jar ./target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
 - Console H2: `http://localhost:8080/h2-console/`
 
+## Docker
+
+```bash
+docker build -t poc-recherche-documentaire .
+docker run --rm -p 8080:8080 -v ${PWD}/storage:/app/storage -v ${PWD}/lucene-suggest:/app/lucene-suggest poc-recherche-documentaire
+```
+
+Le conteneur conserve la base H2, les documents et l'index d'autocompletion dans les volumes montes sous `/app/storage` et `/app/lucene-suggest`.
+
 ## Formats supportes
 
 | Type de document | Format | Traitement |
@@ -66,3 +75,11 @@ Le projet a ete neutralise pour une publication publique :
 - vocabulaire metier rendu generique
 - identifiants projet renommes
 - references specifiques retirees de l'UI et de la documentation
+
+## CI GitHub
+
+Le workflow GitHub Actions [`.github/workflows/build.yml`](.github/workflows/build.yml) :
+
+- compile et teste le projet avec Maven sur JDK 25
+- verifie que l'image Docker se construit correctement sur les pull requests
+- publie l'image Docker dans GitHub Container Registry (`ghcr.io`) lors des pushes sur `main` et des tags `v*`

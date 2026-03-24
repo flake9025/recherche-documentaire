@@ -175,6 +175,8 @@ class DocumentServiceTest {
         Files.writeString(file, "data");
 
         when(ocrServiceFactory.isOcrEnabled()).thenReturn(true);
+        when(ocrServiceFactory.getDefaultOCRService()).thenReturn(ocrService);
+        when(ocrService.getType()).thenReturn("pdfbox");
         when(ocrServiceFactory.getOCRService(anyString())).thenReturn(ocrService);
         when(storageServiceFactory.getDefaultStorageService()).thenReturn(storageService);
         when(storageService.getPath("doc.pdf")).thenReturn(file);
