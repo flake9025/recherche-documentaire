@@ -21,6 +21,9 @@ import java.util.Objects;
 @Slf4j
 public class BertEmbeddingsService {
 
+    // Ce modele donne un bon compromis pour un POC:
+    // taille modeste, chargement rapide et embeddings suffisamment pertinents
+    // pour de la recherche documentaire generaliste.
     private final String modelId;
     private ZooModel<String, float[]> model;
     private Predictor<String, float[]> predictor;
@@ -70,6 +73,8 @@ public class BertEmbeddingsService {
     }
 
     public String buildIndexText(String title, String content) {
+        // On combine titre et contenu pour que le vecteur capture a la fois
+        // le sujet du document et son texte utile.
         String safeTitle = normalize(title);
         String safeContent = normalize(content);
         if (safeContent.isBlank()) {
@@ -90,6 +95,8 @@ public class BertEmbeddingsService {
             return;
         }
 
+        // DJL charge le modele Sentence-Transformers depuis Hugging Face et expose
+        // un predictor qui transforme un texte libre en vecteur numerique.
         HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.newInstance(modelId);
         TextEmbeddingTranslator translator = TextEmbeddingTranslator.builder(tokenizer).build();
         Criteria<String, float[]> criteria = Criteria.builder()

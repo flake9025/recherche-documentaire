@@ -94,6 +94,52 @@ Cette architecture donne un bon compromis pour un POC:
 - demarrage deterministic
 - pas besoin de recalculer integralement l'index a chaque lancement
 
+## Modele embeddings et telechargement initial
+
+Le mode `bert` s'appuie sur le modele `sentence-transformers/all-MiniLM-L6-v2`.
+
+Pourquoi ce choix:
+
+- bon compromis qualite / vitesse pour un POC
+- modele beaucoup plus leger que des variantes BERT plus grosses
+- inference assez rapide sur une machine standard
+- tres bon standard pour la recherche semantique generaliste
+
+Au premier usage du mode embeddings, DJL peut telecharger automatiquement les artefacts necessaires:
+
+- le modele Hugging Face
+- le tokenizer associe
+- certains composants natifs du moteur PyTorch utilise par DJL
+
+Important:
+
+- ce telechargement n'a lieu qu'une premiere fois si les artefacts ne sont pas deja presents
+- ensuite, ils restent dans le cache local de la machine
+- les recherches suivantes reutilisent ce cache local et ne retelechargent pas le modele
+
+En pratique, il faut donc distinguer:
+
+- le chargement reseau initial
+- le chargement du modele en memoire au runtime
+
+Pour une demonstration, il est recommande de:
+
+1. lancer une premiere recherche BERT sur la machine cible avant la demo
+2. verifier que le modele est bien present dans le cache local
+3. garder ce cache entre deux executions
+
+Choix retenu dans ce projet:
+
+- le modele n'est pas versionne dans le repository Git
+- cela evite d'alourdir fortement le depot pour un artefact binaire externe
+- le comportement par defaut repose donc sur le cache local DJL / Hugging Face
+
+Si un usage hors ligne strict devient necessaire, une evolution possible serait:
+
+- pretelecharger le modele dans un dossier local dedie
+- charger DJL depuis ce chemin local plutot que depuis le Hub
+- ou embarquer ces artefacts dans une image de deploiement plutot que dans Git
+
 ## Enjeux de securite
 
 Le projet traite volontairement la securite applicative a un niveau visible en demo.
@@ -223,14 +269,6 @@ Plus precisement:
 - recherche semantique par similarite vectorielle sur les documents indexes
 
 Il s'agit donc d'un POC de recherche documentaire assistee par IA, avec une base applicative simple, demonstrable et orientee performance.
-
-## Publication
-
-Le projet a ete neutralise pour une publication publique:
-
-- vocabulaire metier rendu generique
-- identifiants projet renommes
-- references specifiques retirees de l'UI et de la documentation
 
 ## CI GitHub
 

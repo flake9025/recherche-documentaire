@@ -30,6 +30,8 @@ import java.util.Optional;
 @Slf4j
 public class BertEmbeddingsIndexService implements IndexService<Void> {
 
+    // Le snapshot complet du store BERT est persiste dans la meme table que Lucene,
+    // mais avec un nom d'index dedie.
     private static final String INDEX_NAME = "bert_embeddings";
 
     private final BertEmbeddingsService bertEmbeddingsService;
@@ -50,6 +52,10 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
     @Transactional
     public void addDocumentToDocumentIndex(DocumentDTO documentDTO, String data) {
         log.info("Upsert doc {} in embeddings store", documentDTO.getId());
+
+        // Un embedding est un vecteur de flottants qui represente le sens global
+        // d'un texte dans un espace numerique. Deux textes proches par le sens
+        // doivent produire des vecteurs proches.
         String indexedText = bertEmbeddingsService.buildIndexText(documentDTO.getTitre(), data);
         float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
 
@@ -103,6 +109,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         byte[] indexData = cipherService.decrypt(entityOpt.get().getIndexData());
         List<BertEmbeddingDocument> entities = new ArrayList<>();
         try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(indexData))) {
+            // On recharge tout le store en RAM pour que la recherche BERT
+            // n'ait pas a relire la base a chaque requete.
             int documentCount = dis.readInt();
             for (int i = 0; i < documentCount; i++) {
                 entities.add(readEmbedding(dis));
@@ -121,6 +129,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
             return;
         }
 
+        // Le store memoire est serialise puis chiffre pour conserver
+        // un etat redemarrable sans stocker l'index en clair en base.
         List<BertEmbeddingDocument> entities = bertEmbeddingsStore.findAll();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (DataOutputStream dos = new DataOutputStream(baos)) {

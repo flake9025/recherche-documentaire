@@ -56,6 +56,9 @@ public class BertEmbeddingsSearchService implements SearchService {
     public SearchResultDTO search(SearchRequestDTO request) {
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
         String query = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
+
+        // La requete utilisateur est elle aussi projetee en embedding, puis comparee
+        // aux embeddings documents deja charges en memoire.
         float[] queryVector = bertEmbeddingsService.generateEmbedding(query);
         Set<String> queryTokens = tokenize(query);
 
@@ -84,6 +87,10 @@ public class BertEmbeddingsSearchService implements SearchService {
             Set<String> queryTokens,
             float[] queryVector
     ) {
+        // Le score final est hybride:
+        // - similarite semantique via cosine similarity
+        // - signal lexical pour favoriser les correspondances plus precises
+        //   sur le titre, les metadonnees et certains codes metier.
         float semanticScore = queryVector.length == 0 ? 1.0f : cosineSimilarity(queryVector, entity.embedding());
         float lexicalScore = query.isBlank() ? 1.0f : lexicalScore(entity, query, queryTokens);
         float score = query.isBlank()
@@ -143,6 +150,9 @@ public class BertEmbeddingsSearchService implements SearchService {
             return 0.0f;
         }
 
+        // Le reranking lexical corrige le principal defaut des embeddings:
+        // ils captent bien le sens, mais distinguent parfois mal des references
+        // tres proches comme des codes documentaires ou des variantes de titre.
         String normalizedQuery = normalize(query);
         String title = normalize(entity.title());
         String author = normalize(entity.author());
@@ -269,6 +279,8 @@ public class BertEmbeddingsSearchService implements SearchService {
         if (left.length == 0 || right.length == 0 || left.length != right.length) {
             return 0.0f;
         }
+        // La cosine similarity mesure l'angle entre deux vecteurs:
+        // plus ils pointent dans la meme direction, plus les textes sont proches.
         double dotProduct = 0.0d;
         double leftNorm = 0.0d;
         double rightNorm = 0.0d;
