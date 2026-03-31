@@ -94,7 +94,7 @@ public class DocumentService {
 
     public String getFileText(DocumentDTO documentDTO) throws IOException {
         if(!ocrServiceFactory.isOcrEnabled()) {
-            log.info("OCR is disabled");
+            log.debug("OCR is disabled");
             return "";
         }
         return getFileText(documentDTO, ocrServiceFactory.getDefaultOCRService().getType());
@@ -102,7 +102,7 @@ public class DocumentService {
 
     public String getFileText(DocumentDTO documentDTO, String ocrType) throws IOException {
         if(!ocrServiceFactory.isOcrEnabled()) {
-            log.info("OCR is disabled");
+            log.debug("OCR is disabled");
             return "";
         }
         DataType dataType = DataType.valueOf(documentDTO.getCategorie());

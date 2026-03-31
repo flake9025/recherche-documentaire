@@ -1,10 +1,13 @@
 package fr.vvlabs.recherche.config;
 
+import fr.vvlabs.recherche.service.business.index.IndexType;
+import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingsIndexService;
 import fr.vvlabs.recherche.service.business.index.lucene.LuceneIndexService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.store.ByteBuffersDirectory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
@@ -17,23 +20,29 @@ public class ApplicationConfig {
 
     private final LuceneConfig luceneConfig;
     private final LuceneIndexService luceneIndexService;
+    private final BertEmbeddingsIndexService bertEmbeddingsIndexService;
+
+    @Value("${app.indexer.default:lucene}")
+    private String defaultIndexType;
 
     @PostConstruct
-    public void reloadIndexAtStartup(){
+    public void reloadIndexAtStartup() {
         try {
             LocalTime t1 = LocalTime.now();
+            if (IndexType.LUCENE.equals(defaultIndexType)) {
+                ByteBuffersDirectory index = luceneIndexService.loadDocumentIndexFromDatabase();
+                luceneConfig.setDocumentsIndex(index);
+            } else if (IndexType.BERT.equals(defaultIndexType)) {
+                bertEmbeddingsIndexService.loadDocumentIndexFromDatabase();
+            } else {
+                log.info("Index warmup skipped because default indexer is {}", defaultIndexType);
+                return;
+            }
 
-            ByteBuffersDirectory index = luceneIndexService.loadDocumentIndexFromDatabase();
-            log.info("Default Index loaded from Database !");
-            luceneConfig.setDocumentsIndex(index);
-            log.info("Default Index loaded in Memory !");
-
-            LocalTime t2 = LocalTime.now();
-            Duration d = Duration.between(t1, t2);
-            log.info("Millis Ã©coulÃ©s pour le chargement, dechiffrement, mise en memoire : {}" , d.toMillis());
+            Duration duration = Duration.between(t1, LocalTime.now());
+            log.info("Index {} loaded in memory in {} ms", defaultIndexType, duration.toMillis());
         } catch (Exception e) {
-            log.error("Load Default Index from Database error: {}", e.getMessage(), e);
+            log.error("Load default index {} error: {}", defaultIndexType, e.getMessage(), e);
         }
     }
 }
-

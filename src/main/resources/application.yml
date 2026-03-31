@@ -19,8 +19,7 @@ spring:
       enabled: true
       max-file-size: 10MB
       max-request-size: 10MB
-  sql.init.mode: embedded #demarrages suivants
-  #sql.init.mode: always #premiere creation de la base
+  sql.init.mode: always
   threads.virtual.enabled: true
 
 logging:
@@ -34,10 +33,17 @@ logging:
 
 app:
   indexer:
-    default: lucene
-    use-database: false
+    default: bert
+    use-database: true
+  embeddings:
+    model-id: sentence-transformers/all-MiniLM-L6-v2
+    search:
+      max-results: 25
+      min-score: 0.35
+      semantic-weight: 0.75
+      lexical-weight: 0.25
   parser.ocr:
-    enabled: false
+    enabled: true
     default: pdfbox #pdfbox ou tika
     tesseract:
           pdfDpi: 70
@@ -57,6 +63,6 @@ app:
     distance.levenshtein: ~2
   task:
     ocr:
-      enabled: true
+      enabled: false
       delay: 5000 #300000=5min
 

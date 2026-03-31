@@ -5,6 +5,8 @@ import fr.vvlabs.recherche.config.LuceneConfig;
 import fr.vvlabs.recherche.dto.SearchFragmentDTO;
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
+import fr.vvlabs.recherche.service.business.index.IndexType;
+import fr.vvlabs.recherche.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.lucene.document.Document;
@@ -28,11 +30,17 @@ import java.time.format.DateTimeParseException;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class LuceneSearchService {
+public class LuceneSearchService implements SearchService {
 
     private final LuceneConfig luceneConfig;
     private static final DateTimeFormatter INDEX_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
+    @Override
+    public String getType() {
+        return IndexType.LUCENE;
+    }
+
+    @Override
     public SearchResultDTO search(SearchRequestDTO request) throws Exception {
         String queryText = request == null ? null : request.getQuery();
         String category = request == null ? null : request.getCategory();
@@ -104,6 +112,11 @@ public class LuceneSearchService {
 
         searchResultDTO.setNbResults(searchResultDTO.getFragments().size());
         return searchResultDTO;
+    }
+
+    @Override
+    public boolean isSearchStoreEmpty() throws Exception {
+        return luceneConfig.isIndexEmpty();
     }
 
     private static SearchFragmentDTO buildSearchFragmentDTO(Document doc, String fragment, ScoreDoc hit) {

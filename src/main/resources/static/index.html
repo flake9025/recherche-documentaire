@@ -105,6 +105,7 @@
                     <div class="tab-header">
                         <button class="tab-button is-active" type="button" data-tab="search">Recherche</button>
                         <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
+                        <button class="tab-button" type="button" data-tab="maintenance">Maintenance</button>
                     </div>
                     <div class="panel-header">
                         <div>
@@ -148,6 +149,7 @@
                     <div class="tab-header">
                         <button class="tab-button" type="button" data-tab="search">Recherche</button>
                         <button class="tab-button is-active" type="button" data-tab="index">Ajouter un document</button>
+                        <button class="tab-button" type="button" data-tab="maintenance">Maintenance</button>
                     </div>
                     <div class="panel-header">
                         <div>
@@ -215,6 +217,41 @@
                     <div class="success-message" id="indexSuccess"></div>
                     <div class="result-box" id="indexResult">
                         <pre id="indexResultContent"></pre>
+                    </div>
+                </section>
+
+                <section class="panel tab-panel" id="tab-maintenance" data-tab-panel="maintenance">
+                    <div class="tab-header">
+                        <button class="tab-button" type="button" data-tab="search">Recherche</button>
+                        <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
+                        <button class="tab-button is-active" type="button" data-tab="maintenance">Maintenance</button>
+                    </div>
+                    <div class="panel-header">
+                        <div>
+                            <h2>Maintenance</h2>
+                            <p class="panel-subtitle">Relancez les op&eacute;rations d&apos;administration de l&apos;index sans passer par l&apos;API.</p>
+                        </div>
+                        <span class="panel-tag">Outils</span>
+                    </div>
+
+                    <div class="maintenance-card">
+                        <div class="maintenance-copy">
+                            <h3>Rebuild de l&apos;index auteurs</h3>
+                            <p>Reconstruit l&apos;autocompl&eacute;tion des auteurs &agrave; partir des documents d&eacute;j&agrave; stock&eacute;s.</p>
+                        </div>
+                        <div class="btn-row maintenance-actions">
+                            <button class="btn" id="rebuildAuthorsBtn" type="button">Rebuild index auteurs</button>
+                        </div>
+                    </div>
+
+                    <div class="loading" id="maintenanceLoading">
+                        <div class="spinner"></div>
+                        <p>Rebuild en cours...</p>
+                    </div>
+                    <div class="error" id="maintenanceError"></div>
+                    <div class="success-message" id="maintenanceSuccess"></div>
+                    <div class="result-box" id="maintenanceResult">
+                        <pre id="maintenanceResultContent"></pre>
                     </div>
                 </section>
             </main>

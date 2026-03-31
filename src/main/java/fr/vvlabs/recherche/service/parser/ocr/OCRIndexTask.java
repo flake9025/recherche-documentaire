@@ -41,7 +41,7 @@ public class OCRIndexTask {
     @Async("ocrExecutor")
     public Future<Void> processOCRDocuments() {
         if(!ocrTaskEnabled) {
-            log.info("OCR task is disabled");
+            //log.debug("OCR task is disabled");
             return null;
         }
 

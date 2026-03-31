@@ -4,7 +4,8 @@ const API_BASE = window.location.origin;
 const ENDPOINTS = {
     search: '/api/search/',
     index: '/api/index/addFromOCR',
-    autocompleteAuthors: '/api/autocomplete/authors'
+    autocompleteAuthors: '/api/autocomplete/authors',
+    rebuildAuthors: '/api/autocomplete/authors/rebuild'
 };
 
 // ==================== INITIALISATION ====================
@@ -17,6 +18,7 @@ function initEventListeners() {
     document.getElementById('indexBtn').addEventListener('click', performIndex);
     document.getElementById('resetIndexBtn').addEventListener('click', resetIndexForm);
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
+    document.getElementById('rebuildAuthorsBtn').addEventListener('click', rebuildAuthorsIndex);
 
     document.getElementById('indexFile').addEventListener('change', handleFileChange);
 
@@ -379,6 +381,7 @@ function clearSearch() {
 function setButtonsDisabled(isDisabled) {
     document.getElementById('searchBtn').disabled = isDisabled;
     document.getElementById('indexBtn').disabled = isDisabled;
+    document.getElementById('rebuildAuthorsBtn').disabled = isDisabled;
 }
 
 // ==================== AUTOCOMPLÉTION ====================
@@ -544,6 +547,42 @@ function hideAutocomplete() {
     if (autocompleteContainer) {
         autocompleteContainer.classList.remove('show');
         autocompleteContainer.innerHTML = '';
+    }
+}
+
+// ==================== MAINTENANCE ====================
+async function rebuildAuthorsIndex() {
+    const loading = document.getElementById('maintenanceLoading');
+    const error = document.getElementById('maintenanceError');
+    const success = document.getElementById('maintenanceSuccess');
+    const result = document.getElementById('maintenanceResult');
+    const resultContent = document.getElementById('maintenanceResultContent');
+
+    hideElement(error);
+    hideElement(success);
+    hideElement(result);
+    showElement(loading);
+    setButtonsDisabled(true);
+
+    try {
+        const response = await fetch(`${API_BASE}${ENDPOINTS.rebuildAuthors}`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error('Erreur HTTP ' + response.status);
+        }
+
+        const data = await response.json();
+        success.textContent = '✓ Rebuild de l’index auteurs terminé.';
+        resultContent.textContent = JSON.stringify(data, null, 2);
+        showElement(success);
+        showElement(result);
+    } catch (err) {
+        showError(error, 'Erreur : ' + err.message);
+    } finally {
+        hideElement(loading);
+        setButtonsDisabled(false);
     }
 }
 

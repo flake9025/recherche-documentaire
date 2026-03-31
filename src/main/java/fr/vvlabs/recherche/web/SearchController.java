@@ -1,11 +1,12 @@
 package fr.vvlabs.recherche.web;
 
-import fr.vvlabs.recherche.config.LuceneConfig;
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
 import fr.vvlabs.recherche.service.business.document.DocumentService;
-import fr.vvlabs.recherche.service.business.index.lucene.LuceneIndexService;
-import fr.vvlabs.recherche.service.search.lucene.LuceneSearchService;
+import fr.vvlabs.recherche.service.business.index.IndexServiceFactory;
+import fr.vvlabs.recherche.service.business.index.IndexType;
+import fr.vvlabs.recherche.service.search.SearchService;
+import fr.vvlabs.recherche.service.search.SearchServiceFactory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -27,15 +28,16 @@ import java.time.LocalTime;
 @Slf4j
 public class SearchController {
 
-    private final LuceneConfig luceneConfig;
-    private final LuceneIndexService luceneIndexService;
     private final DocumentService documentService;
-    private final LuceneSearchService luceneSearchService;
+    private final IndexServiceFactory indexServiceFactory;
+    private final SearchServiceFactory searchServiceFactory;
 
     @Value("${app.search.wildcard}")
     private boolean wildcardEnabled;
+
     @Value("${app.search.distance.enabled}")
     private boolean searchDistanceEnabled;
+
     @Value("${app.search.distance.levenshtein}")
     private String searchDistanceLevenshtein;
 
@@ -43,47 +45,53 @@ public class SearchController {
     @Operation(summary = "Rechercher")
     public SearchResultDTO search(@RequestBody SearchRequestDTO request) throws Exception {
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
-        String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
+        SearchService searchService = searchServiceFactory.getDefaultSearchService();
 
-        if (wildcardEnabled && text.length() > 3) {
-            text += "*";
-        }
-        if (searchDistanceEnabled && text.length() > 3) {
-            text += searchDistanceLevenshtein;
-        }
-        effectiveRequest.setQuery(text);
+        prepareQuery(effectiveRequest, searchService);
 
-        if (luceneConfig.isIndexEmpty()) {
+        if (searchService.isSearchStoreEmpty()) {
             buildIndexFromDocumentsMetadata();
         }
 
-        return luceneSearchService.search(effectiveRequest);
+        return searchService.search(effectiveRequest);
     }
 
     private void buildIndexFromDocumentsMetadata() throws IOException {
-        log.info("Index is empty : Building index from documents metadata");
+        log.info("Search store is empty: building from documents metadata");
         LocalTime t1 = LocalTime.now();
-        // Etape 1 : Recherche des documents en BDD
+
         documentService.findAll().forEach(documentDTO -> {
-            // Etape 2 : Contenu
             String documentFileText = "";
             try {
                 documentFileText = documentService.getFileText(documentDTO);
             } catch (IOException e) {
                 log.error("getFileText error : {}", e.getMessage(), e);
-                documentFileText = "";
             }
-            // Etape 3 : Indexation des metadatas et contenu
+
             try {
-                luceneIndexService.addDocumentToDocumentIndex(documentDTO, documentFileText);
+                indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
             } catch (IOException e) {
                 log.error("addToIndex error : {}", e.getMessage(), e);
             }
         });
-        LocalTime t2 = LocalTime.now();
-        Duration d = Duration.between(t1, t2);
-        log.info("Millis Ã©coulÃ©s pour l'indexation : {}" , d.toMillis());
-        log.info("Lucene index stats: {}", luceneConfig.getIndexSizeStats());
+
+        Duration duration = Duration.between(t1, LocalTime.now());
+        log.info("Elapsed millis for search store rebuild: {}", duration.toMillis());
+    }
+
+    private void prepareQuery(SearchRequestDTO request, SearchService searchService) {
+        String text = request.getQuery() == null ? "" : request.getQuery().trim();
+        if (!IndexType.LUCENE.equals(searchService.getType())) {
+            request.setQuery(text);
+
+            if (wildcardEnabled && text.length() > 3) {
+                text += "*";
+            }
+            if (searchDistanceEnabled && text.length() > 3) {
+                text += searchDistanceLevenshtein;
+            }
+            return;
+        }
+        request.setQuery(text);
     }
 }
-
