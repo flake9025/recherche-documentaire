@@ -26,11 +26,9 @@ public class LuceneConfig {
     public static final String DEFAULT_INDEX = "default_index";
     private static final String SUGGEST_INDEX_PATH = "./lucene-suggest";
 
-    // documents (search)
     private StandardAnalyzer documentsAnalyzer;
     private ByteBuffersDirectory documentsIndex;
     private final Object documentsIndexLock = new Object();
-    // authors (autocomplete)
     private StandardAnalyzer authorsAnalyzer;
     private AnalyzingInfixSuggester authorsSuggester;
     private Directory authorsSuggestDirectory;
@@ -46,7 +44,6 @@ public class LuceneConfig {
         } catch (IOException e) {
             log.error("Lucene Config KO : {}", e.getMessage(), e);
         }
-
     }
 
     public boolean isIndexEmpty() throws IOException {
@@ -58,18 +55,13 @@ public class LuceneConfig {
         }
     }
 
-    private long computeIndexSizeInBytes() throws IOException {
-        long size = 0L;
-        for (String fileName : documentsIndex.listAll()) {
-            size += documentsIndex.fileLength(fileName);
-        }
-        return size;
-    }
-
     public Map<String, Object> getIndexSizeStats() throws IOException {
         Map<String, Object> stats = new HashMap<>();
 
-        long totalSizeInBytes = computeIndexSizeInBytes();
+        long totalSizeInBytes = 0L;
+        for (String fileName : documentsIndex.listAll()) {
+            totalSizeInBytes += documentsIndex.fileLength(fileName);
+        }
 
         double sizeInKB = totalSizeInBytes / 1024.0;
         double sizeInMB = sizeInKB / 1024.0;
@@ -109,4 +101,3 @@ public class LuceneConfig {
         }
     }
 }
-

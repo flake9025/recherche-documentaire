@@ -21,6 +21,9 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalTime;
 
+/**
+ * Expose les operations de recherche documentaire.
+ */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/search")
@@ -41,57 +44,53 @@ public class SearchController {
     @Value("${app.search.distance.levenshtein}")
     private String searchDistanceLevenshtein;
 
+    /**
+     * Recherche des documents dans l'index actif.
+     *
+     * @param request criteres de recherche
+     * @return resultat agrege
+     * @throws Exception si la preparation ou la recherche echoue
+     */
     @PostMapping("/")
     @Operation(summary = "Rechercher")
     public SearchResultDTO search(@RequestBody SearchRequestDTO request) throws Exception {
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
         SearchService searchService = searchServiceFactory.getDefaultSearchService();
 
-        prepareQuery(effectiveRequest, searchService);
-
-        if (searchService.isSearchStoreEmpty()) {
-            buildIndexFromDocumentsMetadata();
-        }
-
-        return searchService.search(effectiveRequest);
-    }
-
-    private void buildIndexFromDocumentsMetadata() throws IOException {
-        log.info("Search store is empty: building from documents metadata");
-        LocalTime t1 = LocalTime.now();
-
-        documentService.findAll().forEach(documentDTO -> {
-            String documentFileText = "";
-            try {
-                documentFileText = documentService.getFileText(documentDTO);
-            } catch (IOException e) {
-                log.error("getFileText error : {}", e.getMessage(), e);
-            }
-
-            try {
-                indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
-            } catch (IOException e) {
-                log.error("addToIndex error : {}", e.getMessage(), e);
-            }
-        });
-
-        Duration duration = Duration.between(t1, LocalTime.now());
-        log.info("Elapsed millis for search store rebuild: {}", duration.toMillis());
-    }
-
-    private void prepareQuery(SearchRequestDTO request, SearchService searchService) {
-        String text = request.getQuery() == null ? "" : request.getQuery().trim();
+        String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
         if (!IndexType.LUCENE.equals(searchService.getType())) {
-            request.setQuery(text);
-
             if (wildcardEnabled && text.length() > 3) {
                 text += "*";
             }
             if (searchDistanceEnabled && text.length() > 3) {
                 text += searchDistanceLevenshtein;
             }
-            return;
         }
-        request.setQuery(text);
+        effectiveRequest.setQuery(text);
+
+        if (searchService.isSearchStoreEmpty()) {
+            log.info("Search store is empty: building from documents metadata");
+            LocalTime startTime = LocalTime.now();
+
+            documentService.findAll().forEach(documentDTO -> {
+                String documentFileText = "";
+                try {
+                    documentFileText = documentService.getFileText(documentDTO);
+                } catch (IOException e) {
+                    log.error("getFileText error : {}", e.getMessage(), e);
+                }
+
+                try {
+                    indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
+                } catch (IOException e) {
+                    log.error("addToIndex error : {}", e.getMessage(), e);
+                }
+            });
+
+            Duration duration = Duration.between(startTime, LocalTime.now());
+            log.info("Elapsed millis for search store rebuild: {}", duration.toMillis());
+        }
+
+        return searchService.search(effectiveRequest);
     }
 }

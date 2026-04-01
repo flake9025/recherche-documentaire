@@ -30,17 +30,21 @@ public class FSStorageService implements StorageService {
 
     @Override
     public Path storeFile(MultipartFile file, String titre) throws IOException {
-        // Création du répertoire de stockage s'il n'existe pas
         Path storageDir = Paths.get(storagePath);
         Files.createDirectories(storageDir);
 
-        // Génération d'un nom de fichier unique
         String originalFilename = file.getOriginalFilename();
-        String extension = getFileExtension(originalFilename);
+        String extension = "";
+        if (originalFilename != null && !originalFilename.isEmpty()) {
+            int lastDotIndex = originalFilename.lastIndexOf('.');
+            extension = lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : "";
+        }
+
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
         String uniqueId = UUID.randomUUID().toString().substring(0, 8);
-        String filename = String.format("%s_%s_%s%s",
-                sanitizeFilename(titre),
+        String filename = String.format(
+                "%s_%s_%s%s",
+                titre.replaceAll("[^a-zA-Z0-9.-]", "_"),
                 timestamp,
                 uniqueId,
                 extension
@@ -49,10 +53,7 @@ public class FSStorageService implements StorageService {
         Path destinationFile = storageDir.resolve(filename);
 
         log.info("Storing file: {} -> {}", originalFilename, destinationFile);
-
-        // Copie du fichier avec remplacement si existe déjà
         Files.copy(file.getInputStream(), destinationFile, StandardCopyOption.REPLACE_EXISTING);
-
         log.info("File stored successfully: {}", destinationFile);
 
         return destinationFile;
@@ -71,18 +72,5 @@ public class FSStorageService implements StorageService {
             log.error("Error deleting file: {}", filePath, e);
             return false;
         }
-    }
-
-    private String getFileExtension(String filename) {
-        if (filename == null || filename.isEmpty()) {
-            return "";
-        }
-        int lastDotIndex = filename.lastIndexOf('.');
-        return lastDotIndex > 0 ? filename.substring(lastDotIndex) : "";
-    }
-
-    private String sanitizeFilename(String filename) {
-        // Remplace les caractères non autorisés par des underscores
-        return filename.replaceAll("[^a-zA-Z0-9.-]", "_");
     }
 }

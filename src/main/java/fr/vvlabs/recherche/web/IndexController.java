@@ -20,6 +20,9 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * Expose les operations d'indexation unitaire de documents.
+ */
 @RestController
 @RequestMapping("/api/index")
 @Tag(name = "Indexation", description = "API d'indexation documentaire")
@@ -31,6 +34,12 @@ public class IndexController {
     private final StorageServiceFactory storageServiceFactory;
     private final IndexServiceFactory indexServiceFactory;
 
+    /**
+     * Stocke, lit puis indexe un document unique.
+     *
+     * @param request requete d'indexation multi-part
+     * @throws Exception si le stockage, l'OCR ou l'indexation echoue
+     */
     @PostMapping(path = "/addFromOCR", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "Indexer un document avec OCR")
     public void addToIndex(@ModelAttribute IndexRequestDTO request) throws Exception {
@@ -48,18 +57,12 @@ public class IndexController {
             depotDateTime = LocalDate.parse(request.getDateDepot()).atStartOfDay();
         }
 
-        //-----------------------------------------------
-        // Ã‰TAPE 1 : Stockage du fichier
-        //-----------------------------------------------
         Path documentFilePath = storageServiceFactory.getDefaultStorageService()
                 .storeFile(request.getFile(), request.getTitre());
         log.info("File stored at: {}", documentFilePath);
 
-        //-----------------------------------------------
-        // Ã‰TAPE 2 : Stockage des metadonnees
-        //-----------------------------------------------
-        DocumentDTO documentDTO = new DocumentDTO();
-        documentDTO.setTitre(request.getTitre())
+        DocumentDTO documentDTO = new DocumentDTO()
+                .setTitre(request.getTitre())
                 .setAuteur(request.getAuteur())
                 .setCategorie(request.getCategorie())
                 .setNomFichier(documentFilePath.getFileName().toString())
@@ -69,22 +72,12 @@ public class IndexController {
         Long documentId = documentService.save(documentDTO);
         log.info("Document id in database : {}", documentId);
 
-        //-----------------------------------------------
-        // Ã‰TAPE 3 : Lecture du fichier pour OCR
-        //-----------------------------------------------
         String documentFileText = documentService.getFileText(documentDTO, request.getOcrType());
 
-        //-----------------------------------------------
-        // Ã‰TAPE 4 : Indexation
-        //-----------------------------------------------
         indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
         indexServiceFactory.getDefaultIndexService().addAuthorToAucompleteIndex(documentDTO.getAuteur());
         log.info("Document id in index : {}", documentDTO.getId());
 
-        //-----------------------------------------------
-        // Ã‰TAPE 5 : Sauvegarde
-        //-----------------------------------------------
         indexServiceFactory.getDefaultIndexService().saveDocumentIndexToDatabase();
     }
 }
-

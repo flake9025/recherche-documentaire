@@ -39,7 +39,9 @@ public class PDFBoxParserService implements OCRService {
     private final TesseractParserService tesseractParserService;
 
     @Override
-    public String getType() { return OCRType.PDFBOX;}
+    public String getType() {
+        return OCRType.PDFBOX;
+    }
 
     @Override
     public String parseRapport(String fileName, InputStream stream) {
@@ -57,7 +59,7 @@ public class PDFBoxParserService implements OCRService {
     }
 
     private String parsePDF(String fileName, InputStream stream) {
-        LocalTime t1 = LocalTime.now();
+        LocalTime startTime = LocalTime.now();
         String text = "";
         try {
             byte[] pdfBytes = stream.readAllBytes();
@@ -67,39 +69,29 @@ public class PDFBoxParserService implements OCRService {
                 stripper.setStartPage(1);
                 stripper.setEndPage(document.getNumberOfPages());
                 text = stripper.getText(document);
-                if (!hasEnoughText(text)) {
-                    text = ocrPdf(document);
+
+                if (text == null || text.replaceAll("\\s+", "").length() < minTextChars) {
+                    StringBuilder builder = new StringBuilder();
+                    PDFRenderer renderer = new PDFRenderer(document);
+                    int pageCount = document.getNumberOfPages();
+                    int limit = maxPages > 0 ? Math.min(pageCount, maxPages) : pageCount;
+                    for (int pageIndex = 0; pageIndex < limit; pageIndex++) {
+                        String pageText = tesseractParserService.doOcr(renderer.renderImageWithDPI(pageIndex, pdfDpi));
+                        if (pageText != null && !pageText.trim().isEmpty()) {
+                            if (builder.length() > 0) {
+                                builder.append(System.lineSeparator());
+                            }
+                            builder.append(pageText.trim());
+                        }
+                    }
+                    text = builder.toString();
                 }
             }
-            LocalTime t2 = LocalTime.now();
-            Duration d = Duration.between(t1, t2);
-            log.info("Millis Ã©coulÃ©s pour l'OCR Pdfbox : {}" , d.toMillis());
+            log.info("Millis ecoules pour l'OCR Pdfbox : {}", Duration.between(startTime, LocalTime.now()).toMillis());
             log.debug("Parsed content : {}", text);
         } catch (Exception e) {
             log.error("Parsing error for {}", fileName, e.getMessage());
         }
         return text;
     }
-
-    private boolean hasEnoughText(String text) {
-        return text != null && text.replaceAll("\\s+", "").length() >= minTextChars;
-    }
-
-    private String ocrPdf(PDDocument document) throws Exception {
-        StringBuilder builder = new StringBuilder();
-        PDFRenderer renderer = new PDFRenderer(document);
-        int pageCount = document.getNumberOfPages();
-        int limit = maxPages > 0 ? Math.min(pageCount, maxPages) : pageCount;
-        for (int pageIndex = 0; pageIndex < limit; pageIndex++) {
-            String pageText = tesseractParserService.doOcr(renderer.renderImageWithDPI(pageIndex, pdfDpi));
-            if (pageText != null && !pageText.trim().isEmpty()) {
-                if (builder.length() > 0) {
-                    builder.append(System.lineSeparator());
-                }
-                builder.append(pageText.trim());
-            }
-        }
-        return builder.toString();
-    }
 }
-

@@ -4,6 +4,9 @@ import lombok.Data;
 
 import java.time.LocalDate;
 
+/**
+ * Transporte les criteres de recherche documentaire.
+ */
 @Data
 public class SearchRequestDTO {
     private String query;
@@ -13,4 +16,3 @@ public class SearchRequestDTO {
     private LocalDate dateTo;
     private String sort;
 }
-

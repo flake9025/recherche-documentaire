@@ -15,7 +15,13 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.StoredFields;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.QueryParser;
-import org.apache.lucene.search.*;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.uhighlight.UnifiedHighlighter;
 import org.springframework.stereotype.Service;
 
@@ -50,9 +56,8 @@ public class LuceneSearchService implements SearchService {
 
         log.info("Searching '{}' in index", queryText);
 
-        LocalTime t1 = LocalTime.now();
-
-        String[] fields = { IndexConstants.INDEX_KEY_NAME, IndexConstants.INDEX_KEY_CONTENT };
+        LocalTime startTime = LocalTime.now();
+        String[] fields = {IndexConstants.INDEX_KEY_NAME, IndexConstants.INDEX_KEY_CONTENT};
 
         MultiFieldQueryParser parser = new MultiFieldQueryParser(fields, luceneConfig.getDocumentsAnalyzer());
         parser.setDefaultOperator(QueryParser.Operator.OR);
@@ -70,13 +75,11 @@ public class LuceneSearchService implements SearchService {
         addFilter(booleanQuery, IndexConstants.INDEX_KEY_CATEGORIE, category);
         addFilter(booleanQuery, IndexConstants.INDEX_KEY_AUTEUR, author);
 
-        Query query = booleanQuery.build();
-
         SearchResultDTO searchResultDTO = new SearchResultDTO();
 
         try (IndexReader reader = DirectoryReader.open(luceneConfig.getDocumentsIndex())) {
             IndexSearcher searcher = new IndexSearcher(reader);
-            TopDocs results = searcher.search(query, 2000);
+            TopDocs results = searcher.search(booleanQuery.build(), 2000);
 
             UnifiedHighlighter highlighter = new UnifiedHighlighter(searcher, luceneConfig.getDocumentsAnalyzer());
             highlighter.setMaxLength(50_000);
@@ -86,17 +89,27 @@ public class LuceneSearchService implements SearchService {
                 fragments = highlighter.highlight(IndexConstants.INDEX_KEY_CONTENT, baseQuery, results);
             }
 
-            LocalTime t2 = LocalTime.now();
-            Duration d = Duration.between(t1, t2);
-            log.info("Millis Ã©coulÃ©s pour la recherche : {}" , d.toMillis());
+            log.info("Millis ecoules pour la recherche : {}", Duration.between(startTime, LocalTime.now()).toMillis());
 
             StoredFields storedFields = searcher.storedFields();
-
             for (int i = 0; i < results.scoreDocs.length; i++) {
                 ScoreDoc hit = results.scoreDocs[i];
                 Document doc = storedFields.document(hit.doc);
                 String fragment = fragments[i] != null ? fragments[i] : doc.get(IndexConstants.INDEX_KEY_CONTENT);
-                if (!matchesDateRange(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT), dateFrom, dateTo)) {
+
+                LocalDate documentDate = null;
+                String indexedDate = doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT);
+                if (hasText(indexedDate)) {
+                    try {
+                        documentDate = LocalDateTime.parse(indexedDate.trim(), INDEX_DATE_FORMATTER).toLocalDate();
+                    } catch (DateTimeParseException ignored) {
+                        documentDate = null;
+                    }
+                }
+                if ((dateFrom != null || dateTo != null)
+                        && (documentDate == null
+                        || (dateFrom != null && documentDate.isBefore(dateFrom))
+                        || (dateTo != null && documentDate.isAfter(dateTo)))) {
                     continue;
                 }
 
@@ -104,7 +117,17 @@ public class LuceneSearchService implements SearchService {
                 log.debug("Document NAME: {}", doc.get(IndexConstants.INDEX_KEY_NAME));
                 log.debug("Document Highlight: {}", fragment);
 
-                searchResultDTO.getFragments().add(buildSearchFragmentDTO(doc, fragment, hit));
+                SearchFragmentDTO fragmentDTO = new SearchFragmentDTO();
+                fragmentDTO.setId(doc.get(IndexConstants.INDEX_KEY_ID));
+                fragmentDTO.setName(doc.get(IndexConstants.INDEX_KEY_NAME));
+                fragmentDTO.setAuthor(doc.get(IndexConstants.INDEX_KEY_AUTEUR));
+                fragmentDTO.setCategory(doc.get(IndexConstants.INDEX_KEY_CATEGORIE));
+                fragmentDTO.setDate(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT));
+                fragmentDTO.setFilename(doc.get(IndexConstants.INDEX_KEY_FICHIER));
+                fragmentDTO.setFileUrl("/api/documents/" + doc.get(IndexConstants.INDEX_KEY_ID) + "/file");
+                fragmentDTO.setFragment(fragment);
+                fragmentDTO.setScore(hit.score);
+                searchResultDTO.getFragments().add(fragmentDTO);
             }
         } catch (IOException e) {
             log.error(e.getMessage(), e);
@@ -117,20 +140,6 @@ public class LuceneSearchService implements SearchService {
     @Override
     public boolean isSearchStoreEmpty() throws Exception {
         return luceneConfig.isIndexEmpty();
-    }
-
-    private static SearchFragmentDTO buildSearchFragmentDTO(Document doc, String fragment, ScoreDoc hit) {
-        SearchFragmentDTO fragmentDTO = new SearchFragmentDTO();
-        fragmentDTO.setId(doc.get(IndexConstants.INDEX_KEY_ID));
-        fragmentDTO.setName(doc.get(IndexConstants.INDEX_KEY_NAME));
-        fragmentDTO.setAuthor(doc.get(IndexConstants.INDEX_KEY_AUTEUR));
-        fragmentDTO.setCategory(doc.get(IndexConstants.INDEX_KEY_CATEGORIE));
-        fragmentDTO.setDate(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT));
-        fragmentDTO.setFilename(doc.get(IndexConstants.INDEX_KEY_FICHIER));
-        fragmentDTO.setFileUrl("/api/documents/" + doc.get(IndexConstants.INDEX_KEY_ID) + "/file");
-        fragmentDTO.setFragment(fragment);
-        fragmentDTO.setScore(hit.score);
-        return fragmentDTO;
     }
 
     private void addFilter(BooleanQuery.Builder builder, String field, String value) throws Exception {
@@ -147,32 +156,4 @@ public class LuceneSearchService implements SearchService {
     private boolean hasText(String value) {
         return value != null && !value.trim().isEmpty();
     }
-
-    private boolean matchesDateRange(String indexedDate, LocalDate dateFrom, LocalDate dateTo) {
-        if (dateFrom == null && dateTo == null) {
-            return true;
-        }
-        LocalDate documentDate = parseIndexedDate(indexedDate);
-        if (documentDate == null) {
-            return false;
-        }
-        if (documentDate == null) {
-            return false;
-        }
-        return (dateFrom == null || !documentDate.isBefore(dateFrom)) &&
-                (dateTo == null || !documentDate.isAfter(dateTo));
-    }
-
-    private LocalDate parseIndexedDate(String value) {
-        if (!hasText(value)) {
-            return null;
-        }
-        try {
-            LocalDateTime dateTime = LocalDateTime.parse(value.trim(), INDEX_DATE_FORMATTER);
-            return dateTime.toLocalDate();
-        } catch (DateTimeParseException e) {
-            return null;
-        }
-    }
 }
-

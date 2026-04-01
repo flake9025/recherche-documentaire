@@ -2,9 +2,9 @@ package fr.vvlabs.recherche.service.business.document;
 
 import fr.vvlabs.recherche.config.DataType;
 import fr.vvlabs.recherche.dto.DocumentDTO;
+import fr.vvlabs.recherche.mapper.DocumentMapper;
 import fr.vvlabs.recherche.model.DocumentEntity;
 import fr.vvlabs.recherche.repository.DocumentRepository;
-import fr.vvlabs.recherche.service.cipher.CipherService;
 import fr.vvlabs.recherche.service.event.DocumentCreatedEvent;
 import fr.vvlabs.recherche.service.parser.ocr.OCRService;
 import fr.vvlabs.recherche.service.parser.ocr.OCRServiceFactory;
@@ -26,82 +26,125 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * Orchestre le stockage des metadonnees documentaires et l'acces au contenu source.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class DocumentService {
 
     private final DocumentRepository repository;
-    private final CipherService cipherService;
+    private final DocumentMapper documentMapper;
     private final StorageServiceFactory storageServiceFactory;
     private final OCRServiceFactory ocrServiceFactory;
     private final ApplicationEventPublisher eventPublisher;
 
+    /**
+     * Persiste les metadonnees d'un document puis publie l'evenement de creation associe.
+     *
+     * @param documentDTO document a enregistrer
+     * @return identifiant technique du document
+     * @throws Exception si le chiffrement ou la persistance echoue
+     */
     @Transactional
     public Long save(DocumentDTO documentDTO) throws Exception {
-        log.info("Sauvegarde des mÃ©tadonnÃ©es pour le document: {}", documentDTO.getTitre());
+        log.info("Sauvegarde des metadonnees pour le document: {}", documentDTO.getTitre());
 
         LocalDateTime depotDateTime = documentDTO.getDepotDateTime();
         if (depotDateTime == null) {
             depotDateTime = LocalDateTime.now();
         }
 
-        DocumentEntity metadata = new DocumentEntity()
-                .setTitreDocument(cipherService.encrypt(documentDTO.getTitre()))
-                .setAuteurDepot(cipherService.encrypt(documentDTO.getAuteur()))
-                .setCategoriesEns(cipherService.encrypt(documentDTO.getCategorie()))
-                .setNomFichier(cipherService.encrypt(documentDTO.getNomFichier()))
-                .setTailleFichier(documentDTO.getTailleFichier())
+        DocumentEntity metadata = documentMapper.toEntity(documentDTO)
                 .setDepotDateTime(depotDateTime)
                 .setOcrIndexDone(false);
 
         DocumentEntity saved = repository.save(metadata);
         Long documentId = saved.getId();
-        log.info("MÃ©tadonnÃ©es sauvegardÃ©es avec l'ID: {}", documentId);
+        log.info("Metadonnees sauvegardees avec l'ID: {}", documentId);
         documentDTO.setId(documentId);
         eventPublisher.publishEvent(new DocumentCreatedEvent(documentId));
         return documentId;
     }
 
+    /**
+     * Retourne l'ensemble des documents connus.
+     *
+     * @return liste des documents dechiffres
+     */
     @Transactional(readOnly = true)
     public List<DocumentDTO> findAll() {
         return repository.findAll().stream()
-                .map(this::mapToDto)
+                .map(this::safeToDto)
                 .filter(Objects::nonNull)
                 .toList();
     }
 
+    /**
+     * Retourne les documents dont l'index OCR n'est pas encore termine.
+     *
+     * @return liste des documents en attente d'indexation OCR
+     */
     @Transactional(readOnly = true)
     public List<DocumentDTO> findAllPendingOcrIndexing() {
         return repository.findByOcrIndexDoneFalse().stream()
-                .map(this::mapToDto)
+                .map(this::safeToDto)
                 .filter(Objects::nonNull)
                 .toList();
     }
 
+    /**
+     * Marque l'etat d'indexation OCR d'un document.
+     *
+     * @param id identifiant du document
+     * @param done nouvel etat d'indexation
+     */
     @Transactional
     public void markOcrIndexDone(Long id, boolean done) {
         repository.findById(id).ifPresent(entity -> entity.setOcrIndexDone(done));
     }
 
+    /**
+     * Retourne la ressource de fichier associee a un document.
+     *
+     * @param id identifiant du document
+     * @return paire nom de telechargement / ressource
+     * @throws Exception si le dechiffrement ou la resolution du chemin echoue
+     */
     @Transactional(readOnly = true)
     public Map.Entry<String, FileSystemResource> getFileResource(Long id) throws Exception {
-        DocumentEntity doc = repository.findById(id).orElseThrow();
-        String docFileName = cipherService.decrypt(doc.getNomFichier());
-        Path path = getDocumentPath(docFileName);
-        return new AbstractMap.SimpleEntry<>(docFileName, new FileSystemResource(path));
+        DocumentEntity documentEntity = repository.findById(id).orElseThrow();
+        String documentFileName = documentMapper.toDto(documentEntity).getNomFichier();
+        Path path = getDocumentPath(documentFileName);
+        return new AbstractMap.SimpleEntry<>(documentFileName, new FileSystemResource(path));
     }
 
+    /**
+     * Lit le contenu OCR d'un document avec le moteur par defaut.
+     *
+     * @param documentDTO document a lire
+     * @return texte OCR ou chaine vide si l'OCR est desactive
+     * @throws IOException si la lecture du fichier echoue
+     */
     public String getFileText(DocumentDTO documentDTO) throws IOException {
-        if(!ocrServiceFactory.isOcrEnabled()) {
+        if (!ocrServiceFactory.isOcrEnabled()) {
             log.debug("OCR is disabled");
             return "";
         }
         return getFileText(documentDTO, ocrServiceFactory.getDefaultOCRService().getType());
     }
 
+    /**
+     * Lit le contenu OCR d'un document avec un moteur explicite.
+     *
+     * @param documentDTO document a lire
+     * @param ocrType type de moteur OCR a utiliser
+     * @return texte OCR ou chaine vide si l'OCR est desactive
+     * @throws IOException si la lecture du fichier echoue
+     */
     public String getFileText(DocumentDTO documentDTO, String ocrType) throws IOException {
-        if(!ocrServiceFactory.isOcrEnabled()) {
+        if (!ocrServiceFactory.isOcrEnabled()) {
             log.debug("OCR is disabled");
             return "";
         }
@@ -113,35 +156,16 @@ public class DocumentService {
         }
     }
 
-    private Path getDocumentPath(String documentFileName) {
-        return storageServiceFactory.getDefaultStorageService().getPath(documentFileName);
-    }
-
-    private DocumentEntity mapToEntity(DocumentDTO documentDTO) throws Exception {
-        return new DocumentEntity()
-                .setTitreDocument(cipherService.encrypt(documentDTO.getTitre()))
-                .setAuteurDepot(cipherService.encrypt(documentDTO.getAuteur()))
-                .setCategoriesEns(cipherService.encrypt(documentDTO.getCategorie()))
-                .setNomFichier(cipherService.encrypt(documentDTO.getNomFichier()))
-                .setTailleFichier(documentDTO.getTailleFichier())
-                .setOcrIndexDone(documentDTO.isOcrIndexDone());
-    }
-
-    private DocumentDTO mapToDto(DocumentEntity documentEntity) {
+    private DocumentDTO safeToDto(DocumentEntity entity) {
         try {
-            return new DocumentDTO()
-                    .setId(documentEntity.getId())
-                    .setTitre(cipherService.decrypt(documentEntity.getTitreDocument()))
-                    .setAuteur(cipherService.decrypt(documentEntity.getAuteurDepot()))
-                    .setCategorie(cipherService.decrypt(documentEntity.getCategoriesEns()))
-                    .setNomFichier(cipherService.decrypt(documentEntity.getNomFichier()))
-                    .setTailleFichier(documentEntity.getTailleFichier())
-                    .setDepotDateTime(documentEntity.getDepotDateTime())
-                    .setOcrIndexDone(documentEntity.isOcrIndexDone());
+            return documentMapper.toDto(entity);
         } catch (Exception e) {
-            log.error("mapToDto KO : {}", e.getMessage(), e);
+            log.error("documentMapper.toDto KO : {}", e.getMessage(), e);
             return null;
         }
     }
-}
 
+    private Path getDocumentPath(String documentFileName) {
+        return storageServiceFactory.getDefaultStorageService().getPath(documentFileName);
+    }
+}

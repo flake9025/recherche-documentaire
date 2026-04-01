@@ -2,6 +2,9 @@ package fr.vvlabs.recherche.dto;
 
 import lombok.Data;
 
+/**
+ * Represente un fragment de resultat de recherche.
+ */
 @Data
 public class SearchFragmentDTO {
     private String id;
@@ -14,4 +17,3 @@ public class SearchFragmentDTO {
     private String fragment;
     private float score;
 }
-

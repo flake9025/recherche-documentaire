@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Expose les operations d'acces aux documents stockes.
+ */
 @RestController
 @RequestMapping("/api/documents")
 @Tag(name = "Documents", description = "API documentaire")
@@ -25,21 +28,31 @@ public class DocumentController {
 
     private final DocumentService documentService;
 
+    /**
+     * Retourne tous les documents connus.
+     *
+     * @return liste des metadonnees documentaires
+     */
     @GetMapping
-    public List<DocumentDTO> findAll(){
+    public List<DocumentDTO> findAll() {
         return documentService.findAll();
     }
 
+    /**
+     * Retourne le fichier source d'un document.
+     *
+     * @param id identifiant du document
+     * @return flux HTTP du fichier
+     * @throws Exception si le document ne peut pas etre resolu
+     */
     @GetMapping("/{id}/file")
     public ResponseEntity<Resource> getDocumentFile(@PathVariable Long id) throws Exception {
         Map.Entry<String, FileSystemResource> entry = documentService.getFileResource(id);
         String downloadName = entry.getKey();
-        FileSystemResource  resource = entry.getValue();
+        FileSystemResource resource = entry.getValue();
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + downloadName + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + downloadName + "\"")
                 .body(resource);
     }
 }
-

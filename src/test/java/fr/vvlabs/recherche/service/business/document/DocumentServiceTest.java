@@ -2,6 +2,7 @@ package fr.vvlabs.recherche.service.business.document;
 
 import fr.vvlabs.recherche.config.DataType;
 import fr.vvlabs.recherche.dto.DocumentDTO;
+import fr.vvlabs.recherche.mapper.DocumentMapper;
 import fr.vvlabs.recherche.model.DocumentEntity;
 import fr.vvlabs.recherche.repository.DocumentRepository;
 import fr.vvlabs.recherche.service.cipher.CipherService;
@@ -41,6 +42,9 @@ class DocumentServiceTest {
     private CipherService cipherService;
 
     @Mock
+    private DocumentMapper documentMapper;
+
+    @Mock
     private StorageServiceFactory storageServiceFactory;
 
     @Mock
@@ -62,7 +66,7 @@ class DocumentServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new DocumentService(repository, cipherService, storageServiceFactory, ocrServiceFactory, eventPublisher);
+        service = new DocumentService(repository, documentMapper, storageServiceFactory, ocrServiceFactory, eventPublisher);
     }
 
     @Test
@@ -75,6 +79,14 @@ class DocumentServiceTest {
                 .setTailleFichier(123L);
 
         when(cipherService.encrypt(anyString())).thenAnswer(invocation -> "enc-" + invocation.getArgument(0));
+        when(documentMapper.toEntity(dto)).thenAnswer(invocation -> new DocumentEntity()
+                .setTitreDocument(cipherService.encrypt(dto.getTitre()))
+                .setAuteurDepot(cipherService.encrypt(dto.getAuteur()))
+                .setCategoriesEns(cipherService.encrypt(dto.getCategorie()))
+                .setNomFichier(cipherService.encrypt(dto.getNomFichier()))
+                .setTailleFichier(dto.getTailleFichier())
+                .setDepotDateTime(dto.getDepotDateTime())
+                .setOcrIndexDone(dto.isOcrIndexDone()));
         when(repository.save(any(DocumentEntity.class))).thenAnswer(invocation -> {
             DocumentEntity entity = invocation.getArgument(0);
             entity.setId(10L);
@@ -110,10 +122,14 @@ class DocumentServiceTest {
                 .setDepotDateTime(LocalDateTime.of(2026, 2, 1, 9, 0));
 
         when(repository.findAll()).thenReturn(List.of(entity));
-        when(cipherService.decrypt("enc-title")).thenReturn("Titre");
-        when(cipherService.decrypt("enc-author")).thenReturn("Auteur");
-        when(cipherService.decrypt("enc-cat")).thenReturn("RAPPORT");
-        when(cipherService.decrypt("enc-file")).thenReturn("doc.pdf");
+        when(documentMapper.toDto(entity)).thenReturn(new DocumentDTO()
+                .setId(5L)
+                .setTitre("Titre")
+                .setAuteur("Auteur")
+                .setCategorie("RAPPORT")
+                .setNomFichier("doc.pdf")
+                .setTailleFichier(50L)
+                .setDepotDateTime(entity.getDepotDateTime()));
 
         List<DocumentDTO> results = service.findAll();
 
@@ -139,7 +155,7 @@ class DocumentServiceTest {
         Files.writeString(file, "data");
 
         when(repository.findById(7L)).thenReturn(Optional.of(entity));
-        when(cipherService.decrypt("enc-doc.pdf")).thenReturn("doc.pdf");
+        when(documentMapper.toDto(entity)).thenReturn(new DocumentDTO().setNomFichier("doc.pdf"));
         when(storageServiceFactory.getDefaultStorageService()).thenReturn(storageService);
         when(storageService.getPath("doc.pdf")).thenReturn(file);
 

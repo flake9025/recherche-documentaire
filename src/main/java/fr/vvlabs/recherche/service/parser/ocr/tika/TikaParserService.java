@@ -21,7 +21,7 @@ import java.time.LocalTime;
 @RequiredArgsConstructor
 public class TikaParserService implements OCRService {
 
-    private static final byte[] PDF_MAGIC = new byte[] { '%', 'P', 'D', 'F' };
+    private static final byte[] PDF_MAGIC = new byte[]{'%', 'P', 'D', 'F'};
     private static final Tika TIKA = new Tika();
 
     private final TesseractParserService tesseractParserService;
@@ -36,7 +36,9 @@ public class TikaParserService implements OCRService {
     private int maxPages;
 
     @Override
-    public String getType() { return OCRType.TIKA; }
+    public String getType() {
+        return OCRType.TIKA;
+    }
 
     @Override
     public String parseRapport(String fileName, InputStream stream) {
@@ -54,57 +56,41 @@ public class TikaParserService implements OCRService {
     }
 
     private String parseDocument(String fileName, InputStream stream) {
-        LocalTime t1 = LocalTime.now();
+        LocalTime startTime = LocalTime.now();
         String text = "";
         try {
             byte[] bytes = stream.readAllBytes();
             text = TIKA.parseToString(new ByteArrayInputStream(bytes));
-            if (isPdf(bytes) && !hasEnoughText(text)) {
-                text = ocrPdf(bytes);
+
+            boolean pdf = bytes.length >= PDF_MAGIC.length;
+            for (int i = 0; pdf && i < PDF_MAGIC.length; i++) {
+                pdf = bytes[i] == PDF_MAGIC[i];
             }
-            LocalTime t2 = LocalTime.now();
-            Duration d = Duration.between(t1, t2);
-            log.info("Millis Ã©coulÃ©s pour l'OCR Tika : {}" , d.toMillis());
+
+            if (pdf && (text == null || text.replaceAll("\\s+", "").length() < minTextChars)) {
+                StringBuilder builder = new StringBuilder();
+                try (PDDocument document = Loader.loadPDF(bytes)) {
+                    PDFRenderer renderer = new PDFRenderer(document);
+                    int pageCount = document.getNumberOfPages();
+                    int limit = maxPages > 0 ? Math.min(pageCount, maxPages) : pageCount;
+                    for (int pageIndex = 0; pageIndex < limit; pageIndex++) {
+                        String pageText = tesseractParserService.doOcr(renderer.renderImageWithDPI(pageIndex, pdfDpi));
+                        if (pageText != null && !pageText.trim().isEmpty()) {
+                            if (!builder.isEmpty()) {
+                                builder.append(System.lineSeparator());
+                            }
+                            builder.append(pageText.trim());
+                        }
+                    }
+                }
+                text = builder.toString();
+            }
+
+            log.info("Millis ecoules pour l'OCR Tika : {}", Duration.between(startTime, LocalTime.now()).toMillis());
             log.debug("Parsed content : {}", text);
         } catch (Exception e) {
             log.error("Parsing error for {}", fileName, e);
         }
         return text;
     }
-
-    private boolean isPdf(byte[] content) {
-        if (content.length < PDF_MAGIC.length) {
-            return false;
-        }
-        for (int i = 0; i < PDF_MAGIC.length; i++) {
-            if (content[i] != PDF_MAGIC[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private boolean hasEnoughText(String text) {
-        return text != null && text.replaceAll("\\s+", "").length() >= minTextChars;
-    }
-
-    private String ocrPdf(byte[] content) throws Exception {
-        StringBuilder builder = new StringBuilder();
-        try (PDDocument document = Loader.loadPDF(content)) {
-            PDFRenderer renderer = new PDFRenderer(document);
-            int pageCount = document.getNumberOfPages();
-            int limit = maxPages > 0 ? Math.min(pageCount, maxPages) : pageCount;
-            for (int pageIndex = 0; pageIndex < limit; pageIndex++) {
-                String pageText = tesseractParserService.doOcr(renderer.renderImageWithDPI(pageIndex, pdfDpi));
-                if (pageText != null && !pageText.trim().isEmpty()) {
-                    if (!builder.isEmpty()) {
-                        builder.append(System.lineSeparator());
-                    }
-                    builder.append(pageText.trim());
-                }
-            }
-        }
-        return builder.toString();
-    }
 }
-
