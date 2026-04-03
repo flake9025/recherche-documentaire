@@ -5,7 +5,7 @@ import fr.vvlabs.recherche.config.LuceneConfig;
 import fr.vvlabs.recherche.dto.SearchFragmentDTO;
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
-import fr.vvlabs.recherche.service.business.index.IndexType;
+import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

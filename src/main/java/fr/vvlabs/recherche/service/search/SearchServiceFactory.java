@@ -18,7 +18,7 @@ public class SearchServiceFactory {
 
     public SearchServiceFactory(
             List<SearchService> services,
-            @Value("${app.indexer.default:lucene}") String defaultSearch
+            @Value("${app.search.default:${app.indexer.default:lucene}}") String defaultSearch
     ) {
         this.services = services.stream()
                 .peek(service -> log.info("Search service detected: {}", service.getType()))

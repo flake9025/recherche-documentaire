@@ -2,8 +2,8 @@ package fr.vvlabs.recherche.web;
 
 import fr.vvlabs.recherche.dto.BulkUploadResultDTO;
 import fr.vvlabs.recherche.dto.DocumentDTO;
-import fr.vvlabs.recherche.service.business.document.DocumentService;
-import fr.vvlabs.recherche.service.business.index.IndexServiceFactory;
+import fr.vvlabs.recherche.service.document.DocumentService;
+import fr.vvlabs.recherche.service.index.IndexServiceFactory;
 import fr.vvlabs.recherche.service.storage.StorageServiceFactory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;

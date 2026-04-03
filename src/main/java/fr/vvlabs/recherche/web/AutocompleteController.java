@@ -1,7 +1,7 @@
 package fr.vvlabs.recherche.web;
 
 import fr.vvlabs.recherche.dto.AutocompleteRebuildResultDTO;
-import fr.vvlabs.recherche.service.business.index.lucene.LuceneAutocompleteService;
+import fr.vvlabs.recherche.service.index.lucene.LuceneAutocompleteService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

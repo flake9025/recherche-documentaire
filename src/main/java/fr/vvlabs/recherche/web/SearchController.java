@@ -2,9 +2,9 @@ package fr.vvlabs.recherche.web;
 
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
-import fr.vvlabs.recherche.service.business.document.DocumentService;
-import fr.vvlabs.recherche.service.business.index.IndexServiceFactory;
-import fr.vvlabs.recherche.service.business.index.IndexType;
+import fr.vvlabs.recherche.service.document.DocumentService;
+import fr.vvlabs.recherche.service.index.IndexServiceFactory;
+import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.search.SearchService;
 import fr.vvlabs.recherche.service.search.SearchServiceFactory;
 import io.swagger.v3.oas.annotations.Operation;

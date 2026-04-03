@@ -1,43 +1,207 @@
 # Recherche Documentaire Augmentee par l'IA
 
-Application Spring Boot de demonstration pour indexer, enrichir et retrouver rapidement des documents via OCR, recherche plein texte et recherche semantique par embeddings.
-
-Le projet est pense comme un POC convaincant et exploitable en demo:
-
-- ingestion de documents et extraction OCR
-- recherche lexicale rapide avec Lucene
-- recherche semantique avec embeddings BERT
-- autocompletion auteur
-- interface web locale de demonstration
-- API REST documentee avec Swagger
+POC Spring Boot de recherche documentaire combinant OCR, indexation plein texte, recherche semantique par embeddings et interface de demonstration locale.
 
 ![Screenshot](screenshot.png)
 
-## Proposition de valeur
+## Objectif
 
-Ce projet montre une approche moderne de la recherche documentaire, avec un parti pris simple et efficace:
+Le projet sert a demonstrer une architecture simple mais evolutive pour:
 
-- des index maintenus en memoire pour reduire la latence
-- une restauration au demarrage depuis des snapshots persistants
-- un chiffrement applicatif des donnees sensibles stockees en base
-- deux strategies de recherche activables selon le besoin: precision lexicale ou proximite semantique
+- ingerer des documents et extraire leur texte
+- indexer ce contenu avec plusieurs strategies
+- rechercher soit en plein texte, soit en semantique
+- persister des snapshots d'index chiffres
+- preparer une evolution vers des stores vectoriels plus scalables
 
-L'objectif n'est pas seulement de "faire de l'IA", mais de montrer un socle de recherche documentaire:
-
-- lisible pour une demo ou un POC
-- assez concret pour parler performance, securite et UX
-- suffisamment modulaire pour evoluer vers un prototype plus industriel
+Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussions techniques sur l'indexation, la recherche, les feature flags, la securite et les choix d'architecture.
 
 ## Fonctionnalites
 
-- depot et stockage local de documents
-- sauvegarde des metadonnees en base H2
-- extraction OCR via PDFBox, Tika ou Tesseract selon la configuration
-- indexation Lucene plein texte
-- indexation semantique BERT via DJL + Hugging Face
-- autocompletion sur les auteurs avec regroupement des variantes
-- interface web locale avec recherche, indexation et maintenance
-- endpoints REST exposes via Swagger UI
+- upload et stockage local des documents
+- metadonnees documentaires en base H2
+- OCR via PDFBox, Tika et Tesseract selon la configuration
+- mode d'indexation `lucene`
+- mode d'indexation `bert`
+- mode d'indexation `lucene-vector`
+- mode de recherche `lucene`
+- mode de recherche `bert`
+- mode de recherche `lucene-vector`
+- autocompletion auteur avec Lucene
+- snapshots chiffres des index documentaires
+- API REST Swagger + UI web locale
+
+## Architecture
+
+### Documents et OCR
+
+Les documents sont stockes via `StorageService`.
+Les metadonnees sont persistees via `DocumentService`.
+Le texte est extrait via `OCRServiceFactory`.
+
+### Trois pipelines de recherche
+
+Le projet separe maintenant explicitement:
+
+- `app.indexer.default`
+- `app.search.default`
+
+Cela permet de choisir distinctement le moteur utilise pour l'indexation et celui utilise pour la recherche, meme si dans la configuration courante les deux pointent vers `bert`.
+
+#### Mode Lucene
+
+- index documentaire en memoire via `LuceneConfig`
+- persistance du snapshot Lucene dans la table `lucene_index`
+- recherche plein texte avec filtres categorie/auteur/date
+
+#### Mode BERT
+
+- generation d'embeddings via DJL + Hugging Face
+- store d'embeddings abstrait via `BertEmbeddingsStore`
+- recherche semantique + reranking lexical
+- persistance du snapshot BERT dans la table `bert_embeddings_index`
+
+#### Mode Lucene Vector
+
+- index documentaire Lucene avec champs vectoriels natifs
+- generation des embeddings via `BertEmbeddingsService`
+- recherche KNN Lucene avec filtres categorie/auteur/date
+- persistance du snapshot Lucene vectoriel dans la table `lucene_vector_index`
+
+## Stores d'embeddings BERT
+
+Le projet a ete prepare pour plusieurs implementations de store vectoriel:
+
+- `hashmap`
+- `faiss-remote`
+- `qdrant`
+- `milvus`
+
+### Store par defaut
+
+Le store par defaut est configure par:
+
+```yaml
+app:
+  embeddings:
+    store:
+      default: hashmap
+```
+
+### `hashmap`
+
+Mode local du POC:
+
+- store en memoire via `ConcurrentHashMap`
+- recherche par scan du store
+- calcul du score semantique en RAM
+
+### `faiss-remote`
+
+Mode d'integration prevu pour un service externe FAISS:
+
+- le POC Java appelle un service distant via HTTP
+- ce service n'est pas encore livre dans ce repository
+- il pourra etre fourni plus tard sous forme d'image Docker Python/C++
+
+Configuration:
+
+```yaml
+app:
+  embeddings:
+    store:
+      default: faiss-remote
+      faiss:
+        enabled: true
+        base-url: http://localhost:8090
+```
+
+### `qdrant` et `milvus`
+
+Des points d'extension existent deja, mais ces stores ne sont pas encore implementes dans ce repository.
+
+## Feature flags et configuration
+
+Les principaux flips de configuration sont:
+
+```yaml
+app:
+  indexer:
+    default: bert
+    use-database: true
+  search:
+    default: bert
+    wildcard: false
+    vector:
+      max-results: 25
+      candidate-multiplier: 4
+    distance:
+      enabled: false
+      levenshtein: ~2
+  embeddings:
+    model-id: sentence-transformers/all-MiniLM-L6-v2
+    store:
+      default: hashmap
+      faiss:
+        enabled: false
+        base-url: http://localhost:8090
+    search:
+      max-results: 25
+      min-score: 0.35
+      semantic-weight: 0.75
+      lexical-weight: 0.25
+      candidate-limit: 0
+  parser:
+    ocr:
+      enabled: true
+      default: pdfbox
+  storage:
+    default: fs
+  cipher:
+    enabled: true
+  task:
+    ocr:
+      enabled: false
+```
+
+### Sens des flags
+
+- `app.indexer.default`: moteur d'indexation principal (`lucene`, `bert` ou `lucene-vector`)
+- `app.search.default`: moteur de recherche principal (`lucene`, `bert` ou `lucene-vector`)
+- `app.indexer.use-database`: persistance des snapshots d'index en base
+- `app.search.vector.max-results`: nombre maximal de resultats du moteur `lucene-vector`
+- `app.search.vector.candidate-multiplier`: multiplicateur du nombre de candidats KNN explores par `lucene-vector`
+- `app.embeddings.store.default`: implementation du store BERT
+- `app.embeddings.store.faiss.enabled`: active le client du futur service FAISS distant
+- `app.task.ocr.enabled`: active la tache OCR asynchrone
+- `app.search.wildcard`: ajoute un wildcard sur certaines requetes non Lucene
+- `app.search.distance.enabled`: active l'extension fuzzy configuree pour les requetes non Lucene
+
+## Securite
+
+Le projet chiffre:
+
+- les metadonnees documentaires sensibles
+- les snapshots Lucene
+- les snapshots BERT
+
+Le chiffrement est realise par `CipherService`.
+
+Important:
+
+- les structures de recherche restent dechiffrees en memoire
+- ce choix est volontaire pour la performance et la simplicite du POC
+
+## Donnees persistees
+
+- `storage/` contient la base locale et les documents
+- `lucene-suggest/` contient l'index d'autocompletion
+- H2 contient des snapshots chiffres separes par moteur:
+- `lucene_index` pour `lucene`
+- `bert_embeddings_index` pour `bert`
+- `lucene_vector_index` pour `lucene-vector`
+
+Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `app.search.default` entre plusieurs campagnes de test.
 
 ## Stack technique
 
@@ -50,158 +214,7 @@ L'objectif n'est pas seulement de "faire de l'IA", mais de montrer un socle de r
 - Apache Tika
 - Tesseract
 - DJL
-- Hugging Face sentence transformers
-
-## Deux modes de recherche
-
-Le projet peut fonctionner avec deux strategies principales:
-
-- `lucene`: recherche lexicale classique, basee sur les termes presents dans les documents
-- `bert`: recherche semantique basee sur des embeddings, avec reranking lexical pour mieux controler la precision
-
-Le mode par defaut se configure dans [application.yml](/C:/dev/vvlabs/recherche-documentaire/src/main/resources/application.yml).
-
-## Architecture et performance
-
-Le choix technique central du projet est le suivant: les index de recherche sont utilises en memoire.
-
-Pourquoi:
-
-- eviter les lectures disque sur le chemin critique de recherche
-- limiter la latence lors des recherches et des filtres
-- garder un comportement de demo tres reactif, y compris sur des corpus modestes
-
-Concretement:
-
-- l'index Lucene documentaire est charge en memoire au demarrage
-- le store BERT est lui aussi recharge en memoire au demarrage
-- la recherche s'execute ensuite uniquement sur ces structures memoire
-
-Pour ne pas perdre l'etat entre deux redemarrages, l'application persiste separement un snapshot complet de l'index:
-
-- Lucene: serialisation des fichiers de l'index en un blob
-- BERT: serialisation du store complet avec les metadonnees, le contenu indexe et les vecteurs
-
-Au redemarrage:
-
-- le snapshot est relu depuis la base
-- il est dechiffre
-- l'index est reconstruit en memoire
-
-Cette architecture donne un bon compromis pour un POC:
-
-- lecture tres rapide
-- demarrage deterministic
-- pas besoin de recalculer integralement l'index a chaque lancement
-
-## Modele embeddings et telechargement initial
-
-Le mode `bert` s'appuie sur le modele `sentence-transformers/all-MiniLM-L6-v2`.
-
-Pourquoi ce choix:
-
-- bon compromis qualite / vitesse pour un POC
-- modele beaucoup plus leger que des variantes BERT plus grosses
-- inference assez rapide sur une machine standard
-- tres bon standard pour la recherche semantique generaliste
-
-Au premier usage du mode embeddings, DJL peut telecharger automatiquement les artefacts necessaires:
-
-- le modele Hugging Face
-- le tokenizer associe
-- certains composants natifs du moteur PyTorch utilise par DJL
-
-Important:
-
-- ce telechargement n'a lieu qu'une premiere fois si les artefacts ne sont pas deja presents
-- ensuite, ils restent dans le cache local de la machine
-- les recherches suivantes reutilisent ce cache local et ne retelechargent pas le modele
-
-En pratique, il faut donc distinguer:
-
-- le chargement reseau initial
-- le chargement du modele en memoire au runtime
-
-Pour une demonstration, il est recommande de:
-
-1. lancer une premiere recherche BERT sur la machine cible avant la demo
-2. verifier que le modele est bien present dans le cache local
-3. garder ce cache entre deux executions
-
-Choix retenu dans ce projet:
-
-- le modele n'est pas versionne dans le repository Git
-- cela evite d'alourdir fortement le depot pour un artefact binaire externe
-- le comportement par defaut repose donc sur le cache local DJL / Hugging Face
-
-Si un usage hors ligne strict devient necessaire, une evolution possible serait:
-
-- pretelecharger le modele dans un dossier local dedie
-- charger DJL depuis ce chemin local plutot que depuis le Hub
-- ou embarquer ces artefacts dans une image de deploiement plutot que dans Git
-
-## Enjeux de securite
-
-Le projet traite volontairement la securite applicative a un niveau visible en demo.
-
-### Ce qui est chiffre
-
-Les donnees suivantes sont chiffrees avant stockage en base via `CipherService`:
-
-- metadonnees documentaires sensibles
-- snapshot complet de l'index Lucene
-- snapshot complet du store BERT
-
-Cela signifie que les snapshots d'index persistants ne sont pas stockes en clair dans la base.
-
-### Ce qui est en memoire
-
-Pour des raisons de performance, les index sont manipules dechiffres en RAM:
-
-- l'index Lucene en memoire contient les champs recherches en clair
-- le store BERT en memoire contient les textes indexes et les vecteurs
-
-C'est un compromis volontaire:
-
-- meilleur temps de reponse en lecture
-- contrepartie: si l'environnement d'execution est compromis, la memoire applicative devient une surface sensible
-
-### Ce que cela implique
-
-Ce projet est adapte a:
-
-- une demo
-- un POC
-- un prototype interne maitrise
-
-Ce projet n'est pas, en l'etat, un produit "zero trust" ou un socle durci pour des environnements fortement contraints.
-
-Pour aller plus loin en environnement sensible, il faudrait envisager:
-
-- une gestion secrete de cle de chiffrement plus robuste qu'une simple configuration locale
-- du durcissement d'hebergement et de l'isolation memoire
-- une politique de droits d'acces et d'audit
-- une revue des donnees effectivement presentes en clair dans les index
-- eventuellement une segmentation plus fine entre donnees d'index et donnees affichables
-
-## Donnees generees
-
-- `storage/` contient la base locale et les documents stockes
-- `lucene-suggest/` contient l'index d'autocompletion auteur
-- la base H2 contient les snapshots chiffres des index documentaires
-
-Important:
-
-- les snapshots Lucene et BERT sont stockes chiffrés en base
-- les index sont rechargés en memoire au demarrage
-- l'index d'autocompletion auteur reste un index Lucene local sur disque, utile pour l'UX, distinct des snapshots documentaires
-
-## Prerequis
-
-- Java 25+
-- Maven 3.9+
-- 8 Go de RAM recommandes
-- acces reseau au premier usage des embeddings si le modele doit etre recupere
+- Hugging Face sentence-transformers
 
 ## Demarrage local
 
@@ -214,7 +227,7 @@ Acces utiles:
 
 - UI web: `http://localhost:8080/index.html`
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
-- Console H2: `http://localhost:8080/h2-console/`
+- H2 console: `http://localhost:8080/h2-console/`
 
 ## Docker
 
@@ -223,57 +236,29 @@ docker build -t poc-recherche-documentaire .
 docker run --rm -p 8080:8080 -v ${PWD}/storage:/app/storage -v ${PWD}/lucene-suggest:/app/lucene-suggest poc-recherche-documentaire
 ```
 
-Le conteneur conserve la base H2, les documents et l'index d'autocompletion dans les volumes montes sous `/app/storage` et `/app/lucene-suggest`.
-
-## Formats supportes
-
-| Type de document | Format | Traitement |
-| --- | --- | --- |
-| Facture | PDF, image | OCR |
-| Rapport | PDF, image | OCR |
-| Contrat | PDF, image | OCR |
-| Note | PDF, image | OCR |
-
-## Interface de demonstration
-
-L'interface web locale permet de:
-
-- lancer une recherche documentaire
-- indexer un nouveau document
-- relancer des actions de maintenance comme le rebuild de l'index auteur
-
-Cela facilite la demonstration du cycle complet:
-
-1. depot d'un document
-2. OCR et indexation
-3. recherche
-4. maintenance ciblée si necessaire
-
 ## Limites actuelles
 
-- POC destine a la demonstration, pas a la production
-- pas de gestion avancee des droits ni du multi-tenant
-- qualite OCR dependante du type de document
-- la recherche semantique depend du modele et du runtime DJL disponibles
-- les index documentaires sont performants car charges en memoire, au prix d'une exposition memoire plus forte
-- l'autocompletion auteur repose sur un index local distinct, reconstruit si necessaire
+- POC oriente demonstration
+- pas de multi-tenant
+- pas de gestion avancee des droits
+- mode `hashmap` non scalable pour gros corpus
+- `faiss-remote` prepare cote Java mais service externe non encore livre
+- `qdrant` et `milvus` encore en placeholders
 
-## Positionnement IA
+## Tests
 
-Oui, ce projet utilise de l'IA.
+La suite de tests couvre a present:
 
-Plus precisement:
+- services documentaires
+- indexation Lucene, BERT et Lucene vectoriel
+- recherche Lucene, BERT et Lucene vectorielle
+- factories applicatives principales
+- stores BERT `hashmap`, `faiss-remote`, `qdrant`, `milvus`
+- OCR PDFBox
+- service de chiffrement
 
-- OCR pour convertir un document image ou PDF en texte exploitable
-- modele de langage de type Sentence-BERT pour produire des embeddings
-- recherche semantique par similarite vectorielle sur les documents indexes
+Execution:
 
-Il s'agit donc d'un POC de recherche documentaire assistee par IA, avec une base applicative simple, demonstrable et orientee performance.
-
-## CI GitHub
-
-Le workflow GitHub Actions [`.github/workflows/build.yml`](.github/workflows/build.yml):
-
-- compile et teste le projet avec Maven sur JDK 25
-- verifie que l'image Docker se construit correctement sur les pull requests
-- publie l'image Docker dans GitHub Container Registry (`ghcr.io`) lors des pushes sur `main` et des tags `v*`
+```bash
+mvn test
+```

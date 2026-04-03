@@ -24,24 +24,37 @@ spring:
 
 logging:
   level:
-    com.example.pocrecherche: DEBUG
-    com.example.pocrecherche.service.business: INFO
-    com.example.pocrecherche.service.parser: INFO
-    com.example.pocrecherche.service.search: INFO
-    com.example.pocrecherche.util: INFO
-    com.example.pocrecherche.web: DEBUG
+    fr.vvlabs.recherche: INFO
+    fr.vvlabs.recherche.service.parser: INFO
+    fr.vvlabs.recherche.service.search: INFO
+    fr.vvlabs.recherche.web: DEBUG
 
 app:
   indexer:
     default: bert
     use-database: true
+  search:
+    default: bert
+    wildcard: false
+    vector:
+      max-results: 25
+      candidate-multiplier: 4
+    distance:
+      enabled: false
+      levenshtein: ~2
   embeddings:
     model-id: sentence-transformers/all-MiniLM-L6-v2
+    store:
+      default: hashmap
+      faiss:
+        enabled: false
+        base-url: http://localhost:8090
     search:
       max-results: 25
       min-score: 0.35
       semantic-weight: 0.75
       lexical-weight: 0.25
+      candidate-limit: 0
   parser.ocr:
     enabled: true
     default: pdfbox #pdfbox ou tika
@@ -57,10 +70,6 @@ app:
   cipher:
     enabled: true
     key: zHRtFj9XxeREUhD+rqh5oI9PF4ZTN6r3Ua4ouUBq3yM=
-  search:
-    wildcard: false
-    distance.enabled: false
-    distance.levenshtein: ~2
   task:
     ocr:
       enabled: false

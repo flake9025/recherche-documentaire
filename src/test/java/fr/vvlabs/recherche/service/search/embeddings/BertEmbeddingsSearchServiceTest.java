@@ -2,9 +2,11 @@ package fr.vvlabs.recherche.service.search.embeddings;
 
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingDocument;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingsService;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingsStore;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStoreFactory;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
+import fr.vvlabs.recherche.service.index.embeddings.store.hashmap.HashMapBertEmbeddingsStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
@@ -24,16 +26,22 @@ class BertEmbeddingsSearchServiceTest {
     private BertEmbeddingsService bertEmbeddingsService;
 
     private BertEmbeddingsStore bertEmbeddingsStore;
+    private BertEmbeddingsStoreFactory bertEmbeddingsStoreFactory;
     private BertEmbeddingsSearchService service;
 
     @BeforeEach
     void setUp() {
-        bertEmbeddingsStore = new BertEmbeddingsStore();
-        service = new BertEmbeddingsSearchService(bertEmbeddingsService, bertEmbeddingsStore);
+        bertEmbeddingsStore = new HashMapBertEmbeddingsStore();
+        bertEmbeddingsStoreFactory = new BertEmbeddingsStoreFactory(
+                java.util.List.of(bertEmbeddingsStore),
+                "hashmap"
+        );
+        service = new BertEmbeddingsSearchService(bertEmbeddingsService, bertEmbeddingsStoreFactory);
         ReflectionTestUtils.setField(service, "maxResults", 10);
         ReflectionTestUtils.setField(service, "minScore", 0.35d);
         ReflectionTestUtils.setField(service, "semanticWeight", 0.75d);
         ReflectionTestUtils.setField(service, "lexicalWeight", 0.25d);
+        ReflectionTestUtils.setField(service, "candidateLimit", 0);
     }
 
     @Test

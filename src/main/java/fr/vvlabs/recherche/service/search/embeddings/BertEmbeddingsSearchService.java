@@ -3,17 +3,19 @@ package fr.vvlabs.recherche.service.search.embeddings;
 import fr.vvlabs.recherche.dto.SearchFragmentDTO;
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
-import fr.vvlabs.recherche.service.business.index.IndexType;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingDocument;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingsService;
-import fr.vvlabs.recherche.service.business.index.embeddings.BertEmbeddingsStore;
+import fr.vvlabs.recherche.service.index.IndexType;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore.BertEmbeddingMatch;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore.BertEmbeddingsStoreQuery;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStoreFactory;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
 import fr.vvlabs.recherche.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
@@ -33,7 +35,7 @@ public class BertEmbeddingsSearchService implements SearchService {
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss", Locale.FRANCE);
 
     private final BertEmbeddingsService bertEmbeddingsService;
-    private final BertEmbeddingsStore bertEmbeddingsStore;
+    private final BertEmbeddingsStoreFactory bertEmbeddingsStoreFactory;
 
     @Value("${app.embeddings.search.max-results:25}")
     private int maxResults;
@@ -46,6 +48,9 @@ public class BertEmbeddingsSearchService implements SearchService {
 
     @Value("${app.embeddings.search.lexical-weight:0.25}")
     private double lexicalWeight;
+
+    @Value("${app.embeddings.search.candidate-limit:0}")
+    private int candidateLimit;
 
     @Override
     public String getType() {
@@ -62,9 +67,16 @@ public class BertEmbeddingsSearchService implements SearchService {
         float[] queryVector = bertEmbeddingsService.generateEmbedding(query);
         Set<String> queryTokens = tokenize(query);
 
-        List<SearchFragmentDTO> fragments = bertEmbeddingsStore.findAll().stream()
-                .filter(entity -> matchesFilters(entity, effectiveRequest))
-                .map(entity -> toSearchFragment(entity, query, queryTokens, queryVector))
+        BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
+        List<SearchFragmentDTO> fragments = store.search(new BertEmbeddingsStoreQuery(
+                        queryVector,
+                        effectiveRequest.getCategory(),
+                        effectiveRequest.getAuthor(),
+                        effectiveRequest.getDateFrom(),
+                        effectiveRequest.getDateTo(),
+                        candidateLimit
+                )).stream()
+                .map(match -> toSearchFragment(match, query, queryTokens))
                 .filter(fragment -> query.isBlank() || fragment.getScore() >= minScore)
                 .sorted(Comparator.comparing(SearchFragmentDTO::getScore).reversed())
                 .limit(maxResults)
@@ -78,20 +90,20 @@ public class BertEmbeddingsSearchService implements SearchService {
 
     @Override
     public boolean isSearchStoreEmpty() {
-        return bertEmbeddingsStore.count() == 0;
+        return bertEmbeddingsStoreFactory.getDefaultStore().count() == 0;
     }
 
     private SearchFragmentDTO toSearchFragment(
-            BertEmbeddingDocument entity,
+            BertEmbeddingMatch match,
             String query,
-            Set<String> queryTokens,
-            float[] queryVector
+            Set<String> queryTokens
     ) {
+        BertEmbeddingDocument entity = match.document();
         // Le score final est hybride:
         // - similarite semantique via cosine similarity
         // - signal lexical pour favoriser les correspondances plus precises
         //   sur le titre, les metadonnees et certains codes metier.
-        float semanticScore = queryVector.length == 0 ? 1.0f : cosineSimilarity(queryVector, entity.embedding());
+        float semanticScore = match.semanticScore();
         float lexicalScore = query.isBlank() ? 1.0f : lexicalScore(entity, query, queryTokens);
         float score = query.isBlank()
                 ? semanticScore
@@ -108,33 +120,6 @@ public class BertEmbeddingsSearchService implements SearchService {
         fragment.setFragment(buildFragment(entity.contentText()));
         fragment.setScore(score);
         return fragment;
-    }
-
-    private boolean matchesFilters(BertEmbeddingDocument entity, SearchRequestDTO request) {
-        return matchesTextFilter(entity.category(), request.getCategory())
-                && matchesTextFilter(entity.author(), request.getAuthor())
-                && matchesDateRange(entity.depotDateTime(), request.getDateFrom(), request.getDateTo());
-    }
-
-    private boolean matchesTextFilter(String value, String filter) {
-        if (filter == null || filter.isBlank()) {
-            return true;
-        }
-        if (value == null) {
-            return false;
-        }
-        return value.equalsIgnoreCase(filter.trim());
-    }
-
-    private boolean matchesDateRange(LocalDateTime value, LocalDate from, LocalDate to) {
-        if (from == null && to == null) {
-            return true;
-        }
-        if (value == null) {
-            return false;
-        }
-        LocalDate date = value.toLocalDate();
-        return (from == null || !date.isBefore(from)) && (to == null || !date.isAfter(to));
     }
 
     private String buildFragment(String content) {
@@ -275,23 +260,4 @@ public class BertEmbeddingsSearchService implements SearchService {
         return dateTime == null ? null : dateTime.format(RESULT_DATE_FORMATTER);
     }
 
-    private float cosineSimilarity(float[] left, float[] right) {
-        if (left.length == 0 || right.length == 0 || left.length != right.length) {
-            return 0.0f;
-        }
-        // La cosine similarity mesure l'angle entre deux vecteurs:
-        // plus ils pointent dans la meme direction, plus les textes sont proches.
-        double dotProduct = 0.0d;
-        double leftNorm = 0.0d;
-        double rightNorm = 0.0d;
-        for (int i = 0; i < left.length; i++) {
-            dotProduct += left[i] * right[i];
-            leftNorm += left[i] * left[i];
-            rightNorm += right[i] * right[i];
-        }
-        if (leftNorm == 0.0d || rightNorm == 0.0d) {
-            return 0.0f;
-        }
-        return (float) (dotProduct / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm)));
-    }
 }

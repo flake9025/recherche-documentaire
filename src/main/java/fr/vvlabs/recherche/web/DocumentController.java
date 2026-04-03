@@ -1,7 +1,7 @@
 package fr.vvlabs.recherche.web;
 
 import fr.vvlabs.recherche.dto.DocumentDTO;
-import fr.vvlabs.recherche.service.business.document.DocumentService;
+import fr.vvlabs.recherche.service.document.DocumentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.FileSystemResource;
