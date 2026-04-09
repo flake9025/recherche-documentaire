@@ -228,6 +228,8 @@ Acces utiles:
 - UI web: `http://localhost:8080/index.html`
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
 - H2 console: `http://localhost:8080/h2-console/`
+- Health: `http://localhost:8080/actuator/health`
+- Prometheus: `http://localhost:8080/actuator/prometheus`
 
 ## Docker
 

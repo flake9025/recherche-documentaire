@@ -1,77 +1,175 @@
+# Configuration principale du POC.
+# Ce fichier est volontairement commente pour faciliter les essais locaux
+# et les changements de moteur par des testeurs externes.
+#
+# Regle pratique :
+# - commencer avec les valeurs par defaut de ce fichier
+# - ne changer qu'un bloc a la fois
+# - preferer `hashmap` + `pdfbox` pour les tests simples en local
+
 spring:
   main:
+    # Application web Spring MVC classique.
     web-application-type: servlet
   datasource:
+    # Base H2 stockee sur disque pour conserver les donnees entre deux redemarrages.
+    # Pour repartir de zero, supprimer le dossier `storage/database`.
     url: jdbc:h2:file:./storage/database/poc-recherche
     driverClassName: org.h2.Driver
     username: sa
     password:
   h2:
     console:
+      # Console H2 accessible en local sur /h2-console.
       enabled: true
       path: /h2-console
   jpa:
+    # Dialecte SQL H2.
     database-platform: org.hibernate.dialect.H2Dialect
+    # Evite de garder la session Hibernate ouverte pendant le rendu web.
     open-in-view: false
+    # `none` = le schema est gere par `schema.sql`.
+    # Ne pas passer a `create` ou `update` sans le vouloir, sinon les tests
+    # peuvent produire un schema different selon l'environnement.
     hibernate.ddl-auto: none
   servlet:
     multipart:
+      # Upload de fichiers pour l'interface web et l'API.
       enabled: true
       max-file-size: 10MB
       max-request-size: 10MB
+  # Execute `schema.sql` au demarrage.
   sql.init.mode: always
+  # Active les virtual threads Java quand disponibles.
   threads.virtual.enabled: true
 
 logging:
   level:
+    # Niveau global des logs applicatifs.
     fr.vvlabs.recherche: INFO
+    # Monter a DEBUG si vous voulez comprendre l'extraction de texte.
     fr.vvlabs.recherche.service.parser: INFO
+    # Monter a DEBUG pour analyser les requetes et scores de recherche.
     fr.vvlabs.recherche.service.search: INFO
+    # DEBUG utile pendant les tests API locaux.
     fr.vvlabs.recherche.web: DEBUG
+
+management:
+  # Endpoints techniques Spring Boot Actuator.
+  endpoints:
+    web:
+      exposure:
+        # Endpoints exposes sur HTTP.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # Active des indicateurs de type liveness/readiness.
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        # Endpoint des metrics au format Prometheus.
+        enabled: true
 
 app:
   indexer:
-    default: bert
+    # Moteur d'indexation principal.
+    # Valeurs possibles :
+    # - lucene         : indexation texte classique
+    # - bert           : indexation semantique via embeddings
+    # - lucene-vector  : indexation vectorielle native Lucene
+    default: lucene-vector
+    # Sauvegarde les snapshots d'index en base H2.
+    # Recommande pour les tests de redemarrage.
     use-database: true
   search:
-    default: bert
+    # Moteur de recherche utilise par defaut.
+    # Il peut etre different du moteur d'indexation pour tester plusieurs combinaisons.
+    default: lucene-vector
+    # Ajoute un wildcard sur certaines requetes non Lucene.
+    # A laisser a `false` pour des tests de base plus predictibles.
     wildcard: false
+    # Reglages specifiques au moteur `lucene-vector`.
     vector:
+      # Nombre maximal de resultats retournes.
       max-results: 25
+      # Plus la valeur est elevee, plus la recherche explore de candidats KNN.
+      # Augmenter peut ameliorer la pertinence mais degrade les performances.
       candidate-multiplier: 4
+    # Recherche approximative sur les requetes textuelles.
     distance:
+      # `true` = active un mode fuzzy sur certains moteurs textuels.
       enabled: false
+      # Distance de Levenshtein appliquee quand le fuzzy est actif.
       levenshtein: ~2
   embeddings:
+    # Modele Hugging Face utilise pour produire les embeddings.
+    # Changer ce modele peut modifier les resultats et le temps de chargement.
     model-id: sentence-transformers/all-MiniLM-L6-v2
     store:
+      # Backend de stockage des embeddings.
+      # Valeurs possibles :
+      # - hashmap      : simple, en memoire, ideal pour les tests locaux
+      # - faiss-remote : service distant FAISS via HTTP
+      # - qdrant       : point d'extension
+      # - milvus       : point d'extension
       default: hashmap
       faiss:
+        # Active l'appel au service FAISS distant.
         enabled: false
+        # URL du service externe si `faiss-remote` est utilise.
         base-url: http://localhost:8090
     search:
+      # Nombre maximal de resultats semantiques retournes.
       max-results: 25
+      # Score minimum pour conserver un resultat semantique.
       min-score: 0.35
+      # Poids du score semantique dans le score final.
       semantic-weight: 0.75
+      # Poids du score lexical dans le score final.
       lexical-weight: 0.25
+      # 0 = pas de limite supplementaire sur les candidats.
       candidate-limit: 0
   parser.ocr:
+    # Active l'extraction de texte.
+    # A laisser a `true` pour une demo complete.
     enabled: true
-    default: pdfbox #pdfbox ou tika
+    # Moteur principal de parsing PDF.
+    # Valeurs possibles : `pdfbox` ou `tika`.
+    # `pdfbox` est le choix le plus simple pour commencer.
+    default: pdfbox
+    # Parametres utilises si Tesseract entre en jeu.
     tesseract:
-          pdfDpi: 70
-          dataPath: C:/Program Files/Tesseract-OCR/tessdata
-          language: fra
-          psm: 3
-          oem: 1
+      # Resolution de rendu des pages PDF avant OCR.
+      pdfDpi: 70
+      # Chemin des donnees de langue Tesseract.
+      # A adapter selon le systeme du testeur.
+      dataPath: C:/Program Files/Tesseract-OCR/tessdata
+      # Langue principale de l'OCR.
+      language: fra
+      # Mode de segmentation de page Tesseract.
+      psm: 3
+      # Mode moteur OCR Tesseract.
+      oem: 1
   storage:
+    # Backend de stockage des documents sources.
+    # Valeur disponible dans ce POC : `fs`.
     default: fs
+    # Repertoire local de stockage des documents importes.
     path: ./storage/documents
   cipher:
+    # Active le chiffrement de certaines donnees persistees.
+    # Pour un POC public, cette cle ne doit pas etre consideree comme secrete.
     enabled: true
+    # Cle AES encodee en Base64.
+    # Pour des tests isoles, vous pouvez la remplacer par une nouvelle cle.
     key: zHRtFj9XxeREUhD+rqh5oI9PF4ZTN6r3Ua4ouUBq3yM=
   task:
     ocr:
+      # Tache OCR asynchrone periodique.
+      # Desactivee par defaut pour garder un comportement simple en local.
       enabled: false
-      delay: 5000 #300000=5min
-
+      # Delai entre deux executions, en millisecondes.
+      # Exemple : 300000 = 5 minutes.
+      delay: 5000
