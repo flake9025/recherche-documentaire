@@ -1,0 +1,13 @@
+spring:
+  config:
+    activate:
+      on-profile: bert
+
+app:
+  indexer:
+    default: bert
+  search:
+    default: bert
+  embeddings:
+    store:
+      default: hashmap

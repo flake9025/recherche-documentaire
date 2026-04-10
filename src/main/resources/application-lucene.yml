@@ -1,0 +1,10 @@
+spring:
+  config:
+    activate:
+      on-profile: lucene
+
+app:
+  indexer:
+    default: lucene
+  search:
+    default: lucene
