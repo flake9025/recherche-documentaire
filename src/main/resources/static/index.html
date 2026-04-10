@@ -106,6 +106,7 @@
                         <button class="tab-button is-active" type="button" data-tab="search">Recherche</button>
                         <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
                         <button class="tab-button" type="button" data-tab="maintenance">Maintenance</button>
+                        <button class="tab-button" type="button" data-tab="stats">Statistiques</button>
                     </div>
                     <div class="panel-header">
                         <div>
@@ -153,6 +154,7 @@
                         <button class="tab-button" type="button" data-tab="search">Recherche</button>
                         <button class="tab-button is-active" type="button" data-tab="index">Ajouter un document</button>
                         <button class="tab-button" type="button" data-tab="maintenance">Maintenance</button>
+                        <button class="tab-button" type="button" data-tab="stats">Statistiques</button>
                     </div>
                     <div class="panel-header">
                         <div>
@@ -228,6 +230,7 @@
                         <button class="tab-button" type="button" data-tab="search">Recherche</button>
                         <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
                         <button class="tab-button is-active" type="button" data-tab="maintenance">Maintenance</button>
+                        <button class="tab-button" type="button" data-tab="stats">Statistiques</button>
                     </div>
                     <div class="panel-header">
                         <div>
@@ -257,12 +260,42 @@
                         <pre id="maintenanceResultContent"></pre>
                     </div>
                 </section>
+
+                <section class="panel tab-panel" id="tab-stats" data-tab-panel="stats">
+                    <div class="tab-header">
+                        <button class="tab-button" type="button" data-tab="search">Recherche</button>
+                        <button class="tab-button" type="button" data-tab="index">Ajouter un document</button>
+                        <button class="tab-button" type="button" data-tab="maintenance">Maintenance</button>
+                        <button class="tab-button is-active" type="button" data-tab="stats">Statistiques</button>
+                    </div>
+                    <div class="panel-header">
+                        <div>
+                            <h2>Statistiques</h2>
+                            <p class="panel-subtitle">Vue synthétique du volume documentaire, de l'index en mémoire et de l'espace occupé.</p>
+                        </div>
+                        <span class="panel-tag">Mesures</span>
+                    </div>
+
+                    <div class="btn-row">
+                        <button class="btn" id="refreshStatsBtn" type="button">Rafraîchir</button>
+                    </div>
+
+                    <div class="loading" id="statsLoading">
+                        <div class="spinner"></div>
+                        <p>Chargement des statistiques...</p>
+                    </div>
+                    <div class="error" id="statsError"></div>
+                    <div class="result-box show" id="statsResult">
+                        <div id="statsCards" class="stats-grid"></div>
+                    </div>
+                </section>
             </main>
         </div>
     </div>
 
     <script src="script.js"></script>
     <script src="search-metrics.js"></script>
+    <script src="stats.js"></script>
 </body>
 </html>
 

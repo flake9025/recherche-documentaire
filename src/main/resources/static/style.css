@@ -265,6 +265,37 @@ h1 {
     margin-top: 0;
 }
 
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.stats-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stats-label {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.stats-value {
+    color: var(--blue-900);
+    font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+
 .field {
     display: flex;
     flex-direction: column;
@@ -755,6 +786,10 @@ input[type="file"] {
 
     .maintenance-actions {
         min-width: 0;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 }
 
