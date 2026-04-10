@@ -21,6 +21,7 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -34,6 +35,7 @@ import java.util.Optional;
 import static fr.vvlabs.recherche.config.IndexConstants.*;
 
 @Service
+@ConditionalOnProperty(name = "app.indexer.default", havingValue = IndexType.LUCENE)
 @RequiredArgsConstructor
 @Slf4j
 public class LuceneIndexService implements IndexService<ByteBuffersDirectory> {

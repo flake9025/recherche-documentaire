@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,7 @@ public class SearchServiceFactory {
                 .peek(service -> log.info("Search service detected: {}", service.getType()))
                 .collect(Collectors.toMap(SearchService::getType, Function.identity()));
         this.defaultSearch = defaultSearch;
+        validateDefaultService();
     }
 
     public SearchService getDefaultSearchService() {
@@ -33,8 +35,20 @@ public class SearchServiceFactory {
     public SearchService getSearchService(String type) {
         SearchService service = services.get(type);
         if (service == null) {
-            throw new IllegalStateException("Unknown search service: " + type);
+            throw new IllegalStateException(buildUnknownServiceMessage("search service", type));
         }
         return service;
+    }
+
+    private void validateDefaultService() {
+        if (!services.containsKey(defaultSearch)) {
+            throw new IllegalStateException(buildUnknownServiceMessage("default search service", defaultSearch));
+        }
+    }
+
+    private String buildUnknownServiceMessage(String label, String requestedType) {
+        Set<String> availableTypes = services.keySet();
+        return "Unknown " + label + ": " + requestedType + ". Available types: " + availableTypes
+                + ". Check app.search.default and bean conditional configuration.";
     }
 }

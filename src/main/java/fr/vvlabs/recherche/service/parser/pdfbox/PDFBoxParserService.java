@@ -10,6 +10,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -17,6 +18,8 @@ import java.time.Duration;
 import java.time.LocalTime;
 
 @Service
+@ConditionalOnProperty(name = "app.parser.ocr.default", havingValue = OCRType.PDFBOX)
+@ConditionalOnProperty(name = "app.parser.ocr.enabled", havingValue = "true")
 @Slf4j
 @RequiredArgsConstructor
 public class PDFBoxParserService implements OCRService {

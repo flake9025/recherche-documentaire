@@ -3,6 +3,7 @@ package fr.vvlabs.recherche.service.index.embeddings.store.hashmap;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsStoreType;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -18,6 +19,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * Store en memoire base sur une {@link ConcurrentHashMap}.
  */
 @Component
+@ConditionalOnProperty(
+        name = "app.embeddings.store.default",
+        havingValue = BertEmbeddingsStoreType.HASHMAP,
+        matchIfMissing = true
+)
 public class HashMapBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private final Map<Long, BertEmbeddingDocument> documents = new ConcurrentHashMap<>();

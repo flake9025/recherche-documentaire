@@ -24,7 +24,7 @@ class IndexServiceFactoryTest {
 
         assertThatThrownBy(() -> factory.getIndexService("bert"))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Unknown Index");
+                .hasMessageContaining("Unknown index");
     }
 
     private record StubIndexService(String type) implements IndexService<Void> {

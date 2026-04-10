@@ -24,6 +24,7 @@ import org.apache.lucene.store.IOContext;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -45,6 +46,7 @@ import static fr.vvlabs.recherche.config.IndexConstants.INDEX_KEY_ID;
 import static fr.vvlabs.recherche.config.IndexConstants.INDEX_KEY_NAME;
 
 @Service
+@ConditionalOnProperty(name = "app.indexer.default", havingValue = IndexType.LUCENE_VECTOR)
 @RequiredArgsConstructor
 @Slf4j
 public class LuceneVectorIndexService implements IndexService<ByteBuffersDirectory> {

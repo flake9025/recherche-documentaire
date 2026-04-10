@@ -1,7 +1,6 @@
 package fr.vvlabs.recherche.service.parser;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.InputStream;
 import java.util.List;
@@ -14,14 +13,14 @@ class OCRServiceFactoryTest {
     @Test
     void getDefaultOCRService_returnsConfiguredService() {
         OCRService service = new StubOCRService("pdfbox");
-        OCRServiceFactory factory = new OCRServiceFactory(List.of(service), "pdfbox");
+        OCRServiceFactory factory = new OCRServiceFactory(List.of(service), "pdfbox", true);
 
         assertThat(factory.getDefaultOCRService()).isSameAs(service);
     }
 
     @Test
     void getOCRService_throwsWhenUnknown() {
-        OCRServiceFactory factory = new OCRServiceFactory(List.of(new StubOCRService("pdfbox")), "pdfbox");
+        OCRServiceFactory factory = new OCRServiceFactory(List.of(new StubOCRService("pdfbox")), "pdfbox", true);
 
         assertThatThrownBy(() -> factory.getOCRService("tika"))
                 .isInstanceOf(IllegalStateException.class)
@@ -30,8 +29,7 @@ class OCRServiceFactoryTest {
 
     @Test
     void isOcrEnabled_exposesConfiguredFlag() {
-        OCRServiceFactory factory = new OCRServiceFactory(List.of(new StubOCRService("pdfbox")), "pdfbox");
-        ReflectionTestUtils.setField(factory, "ocrEnabled", true);
+        OCRServiceFactory factory = new OCRServiceFactory(List.of(new StubOCRService("pdfbox")), "pdfbox", true);
 
         assertThat(factory.isOcrEnabled()).isTrue();
     }

@@ -3,6 +3,7 @@ package fr.vvlabs.recherche.service.index.embeddings.store.milvus;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsStoreType;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -12,6 +13,7 @@ import java.util.List;
  * Point d'extension pour une integration Milvus.
  */
 @Component
+@ConditionalOnProperty(name = "app.embeddings.store.default", havingValue = BertEmbeddingsStoreType.MILVUS)
 public class MilvusBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private static final String MESSAGE = "Milvus store is not implemented in this POC yet";

@@ -24,6 +24,7 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -35,6 +36,7 @@ import java.time.format.DateTimeParseException;
 import static fr.vvlabs.recherche.service.index.lucene.LuceneVectorIndexService.VECTOR_FIELD;
 
 @Service
+@ConditionalOnProperty(name = "app.search.default", havingValue = IndexType.LUCENE_VECTOR)
 @RequiredArgsConstructor
 @Slf4j
 public class LuceneVectorSearchService implements SearchService {

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -27,6 +28,7 @@ public class IndexServiceFactory {
                         Function.identity()
                 ));
         this.defaultIndex = defaultIndex;
+        validateDefaultService();
     }
 
     public IndexService getDefaultIndexService() {
@@ -36,8 +38,20 @@ public class IndexServiceFactory {
     public IndexService getIndexService(String indexType) {
         IndexService service = services.get(indexType);
         if (service == null) {
-            throw new IllegalStateException("Unknown Index: " + indexType);
+            throw new IllegalStateException(buildUnknownServiceMessage("index", indexType));
         }
         return service;
+    }
+
+    private void validateDefaultService() {
+        if (!services.containsKey(defaultIndex)) {
+            throw new IllegalStateException(buildUnknownServiceMessage("default index", defaultIndex));
+        }
+    }
+
+    private String buildUnknownServiceMessage(String label, String requestedType) {
+        Set<String> availableTypes = services.keySet();
+        return "Unknown " + label + ": " + requestedType + ". Available types: " + availableTypes
+                + ". Check app.indexer.default and bean conditional configuration.";
     }
 }

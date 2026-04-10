@@ -9,6 +9,7 @@ import fr.vvlabs.recherche.service.index.embeddings.faiss.FaissRemoteStatsRespon
 import fr.vvlabs.recherche.service.index.embeddings.faiss.FaissRemoteStoreDocument;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -19,6 +20,7 @@ import java.util.List;
  * Store BERT deleguant l'indexation et la recherche a un service FAISS distant.
  */
 @Component
+@ConditionalOnProperty(name = "app.embeddings.store.default", havingValue = BertEmbeddingsStoreType.FAISS_REMOTE)
 public class FaissRemoteBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private final RestClient restClient;

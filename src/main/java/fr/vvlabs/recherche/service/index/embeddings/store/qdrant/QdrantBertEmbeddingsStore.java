@@ -3,6 +3,7 @@ package fr.vvlabs.recherche.service.index.embeddings.store.qdrant;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsStoreType;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -12,6 +13,7 @@ import java.util.List;
  * Point d'extension pour une integration Qdrant.
  */
 @Component
+@ConditionalOnProperty(name = "app.embeddings.store.default", havingValue = BertEmbeddingsStoreType.QDRANT)
 public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private static final String MESSAGE = "Qdrant store is not implemented in this POC yet";
