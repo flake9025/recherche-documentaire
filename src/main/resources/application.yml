@@ -97,6 +97,10 @@ app:
       # Plus la valeur est elevee, plus la recherche explore de candidats KNN.
       # Augmenter peut ameliorer la pertinence mais degrade les performances.
       candidate-multiplier: 4
+      # Score minimal pour considerer un voisin vectoriel comme pertinent.
+      min-score: 0.75
+      # Longueur minimale de requete utile avant de lancer un KNN sans filtre.
+      min-query-length: 3
     # Recherche approximative sur les requetes textuelles.
     distance:
       # `true` = active un mode fuzzy sur certains moteurs textuels.

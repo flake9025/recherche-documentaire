@@ -135,6 +135,7 @@ async function performSearch() {
     const resultContent = document.getElementById('searchResultContent');
     const resultsHeader = document.getElementById('searchResultsHeader');
     const resultsCount = document.getElementById('resultsCount');
+    const resultsRuntime = document.getElementById('resultsRuntime');
 
     const hasQuery = query.trim().length > 0;
     const hasCategory = categoryFilter !== 'Tout';
@@ -150,6 +151,9 @@ async function performSearch() {
     hideElement(error);
     hideElement(result);
     resultsHeader.style.display = 'none';
+    if (resultsRuntime) {
+        resultsRuntime.innerHTML = '';
+    }
     showElement(loading);
     setButtonsDisabled(true);
 
@@ -174,7 +178,7 @@ async function performSearch() {
         }
 
         const data = await response.json();
-        displaySearchResults(data, resultContent, resultsCount, resultsHeader);
+        displaySearchResults(data, resultContent, resultsCount, resultsHeader, resultsRuntime);
         showElement(result);
     } catch (err) {
         showError(error, 'Erreur : ' + err.message);

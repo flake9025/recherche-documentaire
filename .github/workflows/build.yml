@@ -50,16 +50,25 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=long
             type=ref,event=tag
-            type=ref,event=branch
 
       - name: Build and push Docker image
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Notify NAS
+        if: github.event_name != 'pull_request'
+        run: |
+          curl -X POST "$NAS_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{"image":"ghcr.io/${{ github.repository_owner }}/poc-recherche-documentaire:latest"}'
+        env:
+          NAS_WEBHOOK_URL: ${{ secrets.NAS_WEBHOOK_URL }}

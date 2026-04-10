@@ -5,6 +5,7 @@ import fr.vvlabs.recherche.dto.SearchResultDTO;
 import fr.vvlabs.recherche.service.document.DocumentService;
 import fr.vvlabs.recherche.service.index.IndexServiceFactory;
 import fr.vvlabs.recherche.service.index.IndexType;
+import fr.vvlabs.recherche.service.metrics.SearchMetricsRecorder;
 import fr.vvlabs.recherche.service.search.SearchService;
 import fr.vvlabs.recherche.service.search.SearchServiceFactory;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,6 +35,7 @@ public class SearchController {
     private final DocumentService documentService;
     private final IndexServiceFactory indexServiceFactory;
     private final SearchServiceFactory searchServiceFactory;
+    private final SearchMetricsRecorder searchMetricsRecorder;
 
     @Value("${app.search.wildcard}")
     private boolean wildcardEnabled;
@@ -54,8 +56,11 @@ public class SearchController {
     @PostMapping("/")
     @Operation(summary = "Rechercher")
     public SearchResultDTO search(@RequestBody SearchRequestDTO request) throws Exception {
+        LocalTime overallStartTime = LocalTime.now();
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
         SearchService searchService = searchServiceFactory.getDefaultSearchService();
+        long rebuildTimeMs = 0L;
+        boolean rebuildTriggered = false;
 
         String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
         if (!IndexType.LUCENE.equals(searchService.getType())) {
@@ -71,6 +76,7 @@ public class SearchController {
         if (searchService.isSearchStoreEmpty()) {
             log.info("Search store is empty: building from documents metadata");
             LocalTime startTime = LocalTime.now();
+            rebuildTriggered = true;
 
             documentService.findAll().forEach(documentDTO -> {
                 String documentFileText = "";
@@ -88,9 +94,29 @@ public class SearchController {
             });
 
             Duration duration = Duration.between(startTime, LocalTime.now());
+            rebuildTimeMs = duration.toMillis();
             log.info("Elapsed millis for search store rebuild: {}", duration.toMillis());
         }
 
-        return searchService.search(effectiveRequest);
+        SearchResultDTO result = searchService.search(effectiveRequest);
+        long responseTimeMs = Duration.between(overallStartTime, LocalTime.now()).toMillis();
+        result.setMetrics(searchMetricsRecorder.snapshot(responseTimeMs, rebuildTimeMs));
+        searchMetricsRecorder.recordSearch(
+                responseTimeMs,
+                rebuildTimeMs,
+                result.getNbResults(),
+                rebuildTriggered,
+                resolveQueryKind(effectiveRequest),
+                "success"
+        );
+        return result;
+    }
+
+    private String resolveQueryKind(SearchRequestDTO request) {
+        String query = request.getQuery();
+        if (query == null || query.isBlank()) {
+            return "filters_only";
+        }
+        return "text";
     }
 }

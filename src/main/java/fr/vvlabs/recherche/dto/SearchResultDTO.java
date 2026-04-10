@@ -13,4 +13,5 @@ public class SearchResultDTO {
 
     private int nbResults = 0;
     private List<SearchFragmentDTO> fragments = new ArrayList<>();
+    private SearchMetricsDTO metrics;
 }

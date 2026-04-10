@@ -437,10 +437,17 @@ input[type="file"] {
 .results-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 12px;
     padding-bottom: 10px;
     border-bottom: 1px solid var(--border);
+    gap: 12px;
+}
+
+.results-header-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .results-count {
@@ -451,6 +458,30 @@ input[type="file"] {
 .results-meta {
     font-size: 0.85rem;
     color: var(--muted);
+}
+
+.results-runtime {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.runtime-pill {
+    background: #eef4ff;
+    color: var(--blue-900);
+    border: 1px solid #d6e4ff;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.runtime-pill-warn {
+    background: #fff4db;
+    color: #8a5b00;
+    border-color: #ffe1a6;
 }
 
 .document-item {
@@ -741,6 +772,14 @@ input[type="file"] {
     .toolbar-group {
         width: 100%;
         flex-direction: column;
+    }
+
+    .results-header {
+        flex-direction: column;
+    }
+
+    .results-runtime {
+        justify-content: flex-start;
     }
 }
 

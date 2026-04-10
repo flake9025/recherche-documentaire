@@ -138,8 +138,11 @@
                     <div class="error" id="searchError"></div>
                     <div class="result-box" id="searchResult">
                         <div class="results-header" id="searchResultsHeader" style="display: none;">
-                            <span class="results-count" id="resultsCount"></span>
-                            <span class="results-meta">Affichage des extraits les plus pertinents</span>
+                            <div class="results-header-copy">
+                                <span class="results-count" id="resultsCount"></span>
+                                <span class="results-meta">Affichage des extraits les plus pertinents</span>
+                            </div>
+                            <div class="results-runtime" id="resultsRuntime"></div>
                         </div>
                         <div id="searchResultContent"></div>
                     </div>
@@ -259,6 +262,7 @@
     </div>
 
     <script src="script.js"></script>
+    <script src="search-metrics.js"></script>
 </body>
 </html>
 

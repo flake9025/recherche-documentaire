@@ -48,6 +48,8 @@ class LuceneVectorSearchServiceTest {
         LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
         ReflectionTestUtils.setField(service, "maxResults", 5);
         ReflectionTestUtils.setField(service, "candidateMultiplier", 2);
+        ReflectionTestUtils.setField(service, "minScore", 0.0f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
 
         SearchRequestDTO request = new SearchRequestDTO();
         request.setQuery("alpha");
@@ -75,6 +77,8 @@ class LuceneVectorSearchServiceTest {
         LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
         ReflectionTestUtils.setField(service, "maxResults", 5);
         ReflectionTestUtils.setField(service, "candidateMultiplier", 3);
+        ReflectionTestUtils.setField(service, "minScore", 0.0f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
 
         SearchRequestDTO request = new SearchRequestDTO();
         request.setQuery("alpha");
@@ -83,6 +87,47 @@ class LuceneVectorSearchServiceTest {
         request.setDateFrom(LocalDate.of(2026, 3, 1));
         request.setDateTo(LocalDate.of(2026, 3, 31));
 
+        SearchResultDTO result = service.search(request);
+
+        assertThat(result.getNbResults()).isEqualTo(1);
+        assertThat(result.getFragments().getFirst().getId()).isEqualTo("1");
+    }
+
+    @Test
+    void search_returnsNoResultWhenQueryIsTooWeakWithoutFilters() throws Exception {
+        LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
+        ReflectionTestUtils.setField(service, "maxResults", 5);
+        ReflectionTestUtils.setField(service, "candidateMultiplier", 2);
+        ReflectionTestUtils.setField(service, "minScore", 0.0f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
+
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setQuery("a");
+
+        SearchResultDTO result = service.search(request);
+
+        assertThat(result.getNbResults()).isZero();
+        assertThat(result.getFragments()).isEmpty();
+    }
+
+    @Test
+    void search_filtersOutHitsBelowMinScore() throws Exception {
+        StandardAnalyzer analyzer = new StandardAnalyzer();
+        ByteBuffersDirectory directory = new ByteBuffersDirectory();
+        addDocument(directory, analyzer, "1", "Rapport Alpha", "Alice", "note", "01/03/2026 10:00:00", "a.pdf", "contenu alpha", new float[]{1.0f, 0.0f});
+        addDocument(directory, analyzer, "2", "Rapport Beta", "Bob", "rapport", "15/04/2026 10:00:00", "b.pdf", "contenu beta", new float[]{0.0f, 1.0f});
+
+        when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+        when(bertEmbeddingsService.generateEmbedding("alpha")).thenReturn(new float[]{1.0f, 0.0f});
+
+        LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
+        ReflectionTestUtils.setField(service, "maxResults", 5);
+        ReflectionTestUtils.setField(service, "candidateMultiplier", 2);
+        ReflectionTestUtils.setField(service, "minScore", 0.95f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
+
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setQuery("alpha");
         SearchResultDTO result = service.search(request);
 
         assertThat(result.getNbResults()).isEqualTo(1);

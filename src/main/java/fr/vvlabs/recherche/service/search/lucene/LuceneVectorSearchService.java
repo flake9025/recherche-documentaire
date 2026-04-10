@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Locale;
 
 import static fr.vvlabs.recherche.service.index.lucene.LuceneVectorIndexService.VECTOR_FIELD;
 
@@ -52,6 +53,12 @@ public class LuceneVectorSearchService implements SearchService {
     @Value("${app.search.vector.candidate-multiplier:4}")
     private int candidateMultiplier;
 
+    @Value("${app.search.vector.min-score:0.75}")
+    private float minScore;
+
+    @Value("${app.search.vector.min-query-length:3}")
+    private int minQueryLength;
+
     @Override
     public String getType() {
         return IndexType.LUCENE_VECTOR;
@@ -61,10 +68,16 @@ public class LuceneVectorSearchService implements SearchService {
     public SearchResultDTO search(SearchRequestDTO request) throws Exception {
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
         String queryText = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
+        SearchResultDTO result = new SearchResultDTO();
+
+        if (shouldSkipVectorSearch(queryText, effectiveRequest)) {
+            log.debug("Lucene vector search skipped because query is too weak and no restrictive filters were provided");
+            return result;
+        }
+
         float[] queryVector = bertEmbeddingsService.generateEmbedding(queryText);
         Query filterQuery = buildFilterQuery(effectiveRequest.getCategory(), effectiveRequest.getAuthor());
 
-        SearchResultDTO result = new SearchResultDTO();
         try (IndexReader reader = DirectoryReader.open(luceneConfig.getDocumentsIndex())) {
             IndexSearcher searcher = new IndexSearcher(reader);
             int k = Math.max(maxResults, 1);
@@ -76,6 +89,10 @@ public class LuceneVectorSearchService implements SearchService {
 
             StoredFields storedFields = searcher.storedFields();
             for (ScoreDoc hit : topDocs.scoreDocs) {
+                if (hit.score < minScore) {
+                    continue;
+                }
+
                 Document doc = storedFields.document(hit.doc);
                 if (!matchesDateRange(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT), effectiveRequest.getDateFrom(), effectiveRequest.getDateTo())) {
                     continue;
@@ -157,6 +174,33 @@ public class LuceneVectorSearchService implements SearchService {
         }
         String normalized = content.replaceAll("\\s+", " ").trim();
         return normalized.length() <= 280 ? normalized : normalized.substring(0, 280) + "...";
+    }
+
+    private boolean shouldSkipVectorSearch(String queryText, SearchRequestDTO request) {
+        if (hasRestrictiveFilters(request)) {
+            return false;
+        }
+        return !isQueryStrongEnough(queryText);
+    }
+
+    private boolean hasRestrictiveFilters(SearchRequestDTO request) {
+        return hasText(request.getCategory())
+                || hasText(request.getAuthor())
+                || request.getDateFrom() != null
+                || request.getDateTo() != null;
+    }
+
+    private boolean isQueryStrongEnough(String queryText) {
+        if (!hasText(queryText)) {
+            return false;
+        }
+        String normalized = queryText.toLowerCase(Locale.ROOT).trim();
+        String compact = normalized.replaceAll("[^\\p{L}\\p{N}]+", "");
+        if (compact.length() < minQueryLength) {
+            return false;
+        }
+        long distinctChars = compact.chars().distinct().count();
+        return distinctChars >= Math.min(3, compact.length());
     }
 
     private boolean hasText(String value) {
