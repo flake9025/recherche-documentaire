@@ -39,6 +39,10 @@ Les documents sont stockes via `StorageService`.
 Les metadonnees sont persistees via `DocumentService`.
 Le texte est extrait via `OCRServiceFactory`.
 
+Par defaut, `application.yml` cible un poste Windows local avec une installation
+Tesseract classique. Les profils `lucene`, `lucene-vector` et `bert`
+surchargent le `dataPath` Tesseract pour un environnement Linux/Docker.
+
 ### Trois pipelines de recherche
 
 Le projet separe maintenant explicitement:
@@ -47,6 +51,15 @@ Le projet separe maintenant explicitement:
 - `app.search.default`
 
 Cela permet de choisir distinctement le moteur utilise pour l'indexation et celui utilise pour la recherche, meme si dans la configuration courante les deux pointent vers `bert`.
+
+Les moteurs a base d'embeddings (`bert` et `lucene-vector`) indexent desormais
+le meme contenu textuel que Lucene:
+
+- titre
+- auteur
+- categorie
+- nom de fichier
+- contenu OCR
 
 #### Mode Lucene
 
@@ -135,6 +148,7 @@ app:
     vector:
       max-results: 25
       candidate-multiplier: 4
+      min-score: 0.55
     distance:
       enabled: false
       levenshtein: ~2
@@ -147,7 +161,7 @@ app:
         base-url: http://localhost:8090
     search:
       max-results: 25
-      min-score: 0.35
+      min-score: 0.10
       semantic-weight: 0.75
       lexical-weight: 0.25
       candidate-limit: 0
@@ -155,6 +169,8 @@ app:
     ocr:
       enabled: true
       default: pdfbox
+      tesseract:
+        dataPath: C:/Program Files/Tesseract-OCR/tessdata
   storage:
     default: fs
   cipher:
@@ -176,6 +192,7 @@ app:
 - `app.task.ocr.enabled`: active la tache OCR asynchrone
 - `app.search.wildcard`: ajoute un wildcard sur certaines requetes non Lucene
 - `app.search.distance.enabled`: active l'extension fuzzy configuree pour les requetes non Lucene
+- `app.parser.ocr.tesseract.dataPath`: chemin du repertoire `tessdata`
 
 ## Securite
 
@@ -223,6 +240,20 @@ mvn install
 java -jar ./target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
 ```
 
+Le fichier `application.yml` est le mode POC par defaut sous Windows.
+Si Tesseract est installe classiquement, verifier:
+
+```yaml
+app:
+  parser:
+    ocr:
+      tesseract:
+        dataPath: C:/Program Files/Tesseract-OCR/tessdata
+```
+
+Le profil optionnel `local-windows` peut aussi servir a isoler ce chemin si vous
+preferez ne pas le laisser dans votre configuration principale.
+
 Acces utiles:
 
 - UI web: `http://localhost:8080/index.html`
@@ -235,8 +266,22 @@ Acces utiles:
 
 ```bash
 docker build -t poc-recherche-documentaire .
-docker run --rm -p 8080:8080 -v ${PWD}/storage:/app/storage -v ${PWD}/lucene-suggest:/app/lucene-suggest poc-recherche-documentaire
+docker run --rm -p 8080:8080 -e SPRING_PROFILES_ACTIVE=lucene-vector -v ${PWD}/storage:/app/storage -v ${PWD}/lucene-suggest:/app/lucene-suggest poc-recherche-documentaire
 ```
+
+L'image Docker:
+
+- installe `tesseract-ocr`
+- telecharge `fra.traineddata`
+- place les donnees dans `/usr/share/tessdata`
+
+Sous Linux/Docker, lancer explicitement un des profils metier:
+
+- `lucene`
+- `lucene-vector`
+- `bert`
+
+Chacun surcharge `app.parser.ocr.tesseract.dataPath` avec le chemin Linux adapte.
 
 ## Limites actuelles
 

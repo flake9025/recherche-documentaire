@@ -8,9 +8,9 @@ import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStoreFactory;
 import fr.vvlabs.recherche.service.index.lucene.LuceneAutocompleteService;
 import fr.vvlabs.recherche.service.cipher.CipherService;
-import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -59,7 +59,13 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         // Un embedding est un vecteur de flottants qui represente le sens global
         // d'un texte dans un espace numerique. Deux textes proches par le sens
         // doivent produire des vecteurs proches.
-        String indexedText = bertEmbeddingsService.buildIndexText(documentDTO.getTitre(), data);
+        String indexedText = bertEmbeddingsService.buildIndexText(
+                documentDTO.getTitre(),
+                documentDTO.getAuteur(),
+                documentDTO.getCategorie(),
+                documentDTO.getNomFichier(),
+                data
+        );
         float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
 
         BertEmbeddingDocument document = new BertEmbeddingDocument(

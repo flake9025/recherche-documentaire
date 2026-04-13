@@ -4,6 +4,7 @@ import fr.vvlabs.recherche.config.LuceneConfig;
 import fr.vvlabs.recherche.service.document.DocumentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.search.suggest.InputIterator;
 import org.apache.lucene.util.BytesRef;
 import org.springframework.stereotype.Service;
@@ -31,7 +32,7 @@ public class LuceneAutocompleteService {
     private final Map<String, AuthorAggregate> authorAggregates = new ConcurrentHashMap<>();
 
     public void addAuthor(String author, long weight) throws IOException {
-        if (author == null || author.trim().isEmpty()) {
+        if (StringUtils.isBlank(author)) {
             return;
         }
 
@@ -46,7 +47,7 @@ public class LuceneAutocompleteService {
 
         Map<String, Long> authorCounts = documentService.findAll().stream()
                 .map(doc -> doc.getAuteur())
-                .filter(author -> author != null && !author.trim().isEmpty())
+                .filter(StringUtils::isNotBlank)
                 .collect(Collectors.groupingBy(author -> author, Collectors.counting()));
 
         synchronized (authorAggregates) {
@@ -59,7 +60,7 @@ public class LuceneAutocompleteService {
     }
 
     public List<AuthorSuggestion> suggest(String prefix, int maxResults) throws IOException {
-        if (prefix == null || prefix.trim().isEmpty()) {
+        if (StringUtils.isBlank(prefix)) {
             return Collections.emptyList();
         }
 
@@ -115,7 +116,7 @@ public class LuceneAutocompleteService {
     }
 
     void mergeAuthor(String author, long weight) {
-        String displayAuthor = author == null ? "" : author.trim();
+        String displayAuthor = StringUtils.trimToEmpty(author);
         String canonicalAuthor = canonicalizeAuthor(displayAuthor);
         if (canonicalAuthor.isEmpty()) {
             return;
@@ -134,10 +135,7 @@ public class LuceneAutocompleteService {
     }
 
     String canonicalizeAuthor(String author) {
-        if (author == null) {
-            return "";
-        }
-        return Normalizer.normalize(author, Normalizer.Form.NFD)
+        return Normalizer.normalize(StringUtils.defaultString(author), Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "")
                 .toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ")
@@ -157,10 +155,10 @@ public class LuceneAutocompleteService {
     }
 
     private boolean isBetterDisplay(String candidate, String current) {
-        if (current == null || current.isBlank()) {
+        if (StringUtils.isBlank(current)) {
             return true;
         }
-        if (candidate == null || candidate.isBlank()) {
+        if (StringUtils.isBlank(candidate)) {
             return false;
         }
         int candidateScore = displayScore(candidate);

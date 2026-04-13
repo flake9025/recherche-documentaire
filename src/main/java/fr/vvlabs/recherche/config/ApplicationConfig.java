@@ -44,28 +44,30 @@ public class ApplicationConfig {
     public void reloadIndexAtStartup() {
         try {
             LocalTime t1 = LocalTime.now();
-            if (IndexType.LUCENE.equals(defaultIndexType)) {
-                ByteBuffersDirectory index = luceneIndexService.orElseThrow(
-                                () -> new IllegalStateException("LuceneIndexService bean is not available for app.indexer.default=lucene")
-                        )
-                        .loadDocumentIndexFromDatabase();
-                luceneConfig.setDocumentsIndex(index);
-            } else if (IndexType.LUCENE_VECTOR.equals(defaultIndexType)) {
-                ByteBuffersDirectory index = luceneVectorIndexService.orElseThrow(
-                                () -> new IllegalStateException("LuceneVectorIndexService bean is not available for app.indexer.default=lucene-vector")
-                        )
-                        .loadDocumentIndexFromDatabase();
-                luceneConfig.setDocumentsIndex(index);
-            } else if (IndexType.BERT.equals(defaultIndexType)) {
-                bertEmbeddingsIndexService.orElseThrow(
-                                () -> new IllegalStateException("BertEmbeddingsIndexService bean is not available for app.indexer.default=bert")
-                        )
-                        .loadDocumentIndexFromDatabase();
-            } else {
-                log.info("Index warmup skipped because default indexer is {}", defaultIndexType);
-                return;
-            }
+            switch (defaultIndexType) {
+                case IndexType.LUCENE:
+                    luceneConfig.setDocumentsIndex(luceneIndexService.orElseThrow(
+                                    () -> new IllegalStateException("LuceneIndexService bean is not available for app.indexer.default=lucene")
+                            )
+                            .loadDocumentIndexFromDatabase());
+                    break;
+                case IndexType.LUCENE_VECTOR:
+                    luceneConfig.setDocumentsIndex(luceneVectorIndexService.orElseThrow(
+                                    () -> new IllegalStateException("LuceneVectorIndexService bean is not available for app.indexer.default=lucene-vector")
+                            )
+                            .loadDocumentIndexFromDatabase());
+                    break;
+                case IndexType.BERT:
+                    bertEmbeddingsIndexService.orElseThrow(
+                                    () -> new IllegalStateException("BertEmbeddingsIndexService bean is not available for app.indexer.default=bert")
+                            )
+                            .loadDocumentIndexFromDatabase();
+                    break;
+                default:
+                    log.info("Index warmup skipped because default indexer is {}", defaultIndexType);
+                    return;
 
+            }
             Duration duration = Duration.between(t1, LocalTime.now());
             log.info("Index {} loaded in memory in {} ms", defaultIndexType, duration.toMillis());
         } catch (Exception e) {

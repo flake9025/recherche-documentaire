@@ -140,6 +140,58 @@ class BertEmbeddingsSearchServiceTest {
         assertThat(result.getFragments().get(0).getName()).isEqualTo("ADR 0324");
     }
 
+    @Test
+    void search_withProductionThresholdCanDropPureLexicalContentMatch() {
+        when(bertEmbeddingsService.generateEmbedding("procedure")).thenReturn(new float[]{1.0f, 0.0f});
+
+        bertEmbeddingsStore.upsert(new BertEmbeddingDocument(
+                1L,
+                "Guide interne",
+                "Alice",
+                "NOTE",
+                "guide.pdf",
+                LocalDateTime.of(2025, 1, 10, 9, 0),
+                "Cette procedure doit etre appliquee.",
+                new float[]{0.0f, 1.0f}
+        ));
+
+        SearchResultDTO result = service.search(request("procedure"));
+
+        assertThat(result.getNbResults()).isZero();
+
+        ReflectionTestUtils.setField(service, "minScore", 0.10d);
+
+        SearchResultDTO relaxedResult = service.search(request("procedure"));
+
+        assertThat(relaxedResult.getNbResults()).isEqualTo(1);
+        assertThat(relaxedResult.getFragments().getFirst().getId()).isEqualTo("1");
+        assertThat(relaxedResult.getFragments().getFirst().getScore()).isGreaterThanOrEqualTo(0.10f);
+    }
+
+    @Test
+    void search_canFindDocumentFromAuthorTextEmbeddedInStore() {
+        when(bertEmbeddingsService.generateEmbedding("marie")).thenReturn(new float[]{1.0f, 0.0f});
+
+        bertEmbeddingsStore.upsert(new BertEmbeddingDocument(
+                1L,
+                "Guide interne",
+                "Marie-France FROMAGE",
+                "NOTE",
+                "guide.pdf",
+                LocalDateTime.of(2025, 1, 10, 9, 0),
+                "Contenu divers",
+                new float[]{1.0f, 0.0f}
+        ));
+
+        ReflectionTestUtils.setField(service, "minScore", 0.10d);
+
+        SearchResultDTO result = service.search(request("marie"));
+
+        assertThat(result.getNbResults()).isEqualTo(1);
+        assertThat(result.getFragments().getFirst().getId()).isEqualTo("1");
+        assertThat(result.getFragments().getFirst().getAuthor()).isEqualTo("Marie-France FROMAGE");
+    }
+
     private static SearchRequestDTO request(String query) {
         SearchRequestDTO request = new SearchRequestDTO();
         request.setQuery(query);

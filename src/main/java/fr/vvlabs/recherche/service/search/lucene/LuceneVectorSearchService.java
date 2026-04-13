@@ -10,6 +10,7 @@ import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
 import fr.vvlabs.recherche.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -131,11 +132,11 @@ public class LuceneVectorSearchService implements SearchService {
         BooleanQuery.Builder builder = new BooleanQuery.Builder();
         boolean hasFilter = false;
 
-        if (hasText(category)) {
+        if (StringUtils.isNotBlank(category)) {
             builder.add(parseFilter(IndexConstants.INDEX_KEY_CATEGORIE, category), BooleanClause.Occur.MUST);
             hasFilter = true;
         }
-        if (hasText(author)) {
+        if (StringUtils.isNotBlank(author)) {
             builder.add(parseFilter(IndexConstants.INDEX_KEY_AUTEUR, author), BooleanClause.Occur.MUST);
             hasFilter = true;
         }
@@ -153,7 +154,7 @@ public class LuceneVectorSearchService implements SearchService {
         if (dateFrom == null && dateTo == null) {
             return true;
         }
-        if (!hasText(indexedDate)) {
+        if (StringUtils.isBlank(indexedDate)) {
             return false;
         }
 
@@ -169,10 +170,10 @@ public class LuceneVectorSearchService implements SearchService {
     }
 
     private String buildFragment(String content) {
-        if (!hasText(content)) {
+        if (StringUtils.isBlank(content)) {
             return "";
         }
-        String normalized = content.replaceAll("\\s+", " ").trim();
+        String normalized = StringUtils.normalizeSpace(content);
         return normalized.length() <= 280 ? normalized : normalized.substring(0, 280) + "...";
     }
 
@@ -184,14 +185,14 @@ public class LuceneVectorSearchService implements SearchService {
     }
 
     private boolean hasRestrictiveFilters(SearchRequestDTO request) {
-        return hasText(request.getCategory())
-                || hasText(request.getAuthor())
+        return StringUtils.isNotBlank(request.getCategory())
+                || StringUtils.isNotBlank(request.getAuthor())
                 || request.getDateFrom() != null
                 || request.getDateTo() != null;
     }
 
     private boolean isQueryStrongEnough(String queryText) {
-        if (!hasText(queryText)) {
+        if (StringUtils.isBlank(queryText)) {
             return false;
         }
         String normalized = queryText.toLowerCase(Locale.ROOT).trim();
@@ -203,7 +204,4 @@ public class LuceneVectorSearchService implements SearchService {
         return distinctChars >= Math.min(3, compact.length());
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
-    }
 }

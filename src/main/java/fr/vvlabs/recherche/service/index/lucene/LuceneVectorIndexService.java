@@ -8,9 +8,9 @@ import fr.vvlabs.recherche.service.cipher.CipherService;
 import fr.vvlabs.recherche.service.index.IndexService;
 import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
-import io.micrometer.common.util.StringUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.KnnFloatVectorField;
@@ -73,7 +73,13 @@ public class LuceneVectorIndexService implements IndexService<ByteBuffersDirecto
     public void addDocumentToDocumentIndex(DocumentDTO documentDTO, String data) throws IOException {
         log.info("Upsert doc {} in Lucene vector index", documentDTO.getId());
 
-        String indexedText = bertEmbeddingsService.buildIndexText(documentDTO.getTitre(), data);
+        String indexedText = bertEmbeddingsService.buildIndexText(
+                documentDTO.getTitre(),
+                documentDTO.getAuteur(),
+                documentDTO.getCategorie(),
+                documentDTO.getNomFichier(),
+                data
+        );
         float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
 
         IndexWriterConfig config = new IndexWriterConfig(luceneConfig.getDocumentsAnalyzer());

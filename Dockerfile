@@ -13,6 +13,12 @@ RUN mvn -B -DskipTests package
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl tesseract-ocr \
+    && mkdir -p /usr/share/tessdata \
+    && curl -fsSL https://github.com/tesseract-ocr/tessdata/raw/4.00/fra.traineddata -o /usr/share/tessdata/fra.traineddata \
+    && rm -rf /var/lib/apt/lists/*
+
 # Repertoires utilises par H2, le stockage documentaire et Lucene.
 RUN mkdir -p /app/storage/documents /app/storage/database /app/lucene-suggest
 

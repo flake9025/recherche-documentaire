@@ -8,3 +8,6 @@ app:
     default: lucene
   search:
     default: lucene
+  parser.ocr:
+    tesseract:
+      dataPath: /usr/share/tessdata

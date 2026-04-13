@@ -85,8 +85,10 @@ class LuceneVectorIndexServiceTest {
                 .setNomFichier("doc.pdf")
                 .setDepotDateTime(LocalDateTime.of(2025, 12, 24, 10, 30, 15));
 
-        when(bertEmbeddingsService.buildIndexText("Titre", "contenu")).thenReturn("Titre\n\ncontenu");
-        when(bertEmbeddingsService.generateEmbedding("Titre\n\ncontenu")).thenReturn(new float[]{1.0f, 2.0f, 3.0f});
+        when(bertEmbeddingsService.buildIndexText("Titre", "Auteur", "rapport", "doc.pdf", "contenu"))
+                .thenReturn("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu");
+        when(bertEmbeddingsService.generateEmbedding("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu"))
+                .thenReturn(new float[]{1.0f, 2.0f, 3.0f});
 
         service.addDocumentToDocumentIndex(dto, "contenu");
 
@@ -115,8 +117,10 @@ class LuceneVectorIndexServiceTest {
                 .setNomFichier("doc.pdf")
                 .setDepotDateTime(LocalDateTime.of(2025, 12, 24, 10, 30, 15));
 
-        when(bertEmbeddingsService.buildIndexText("Titre", "contenu")).thenReturn("Titre\n\ncontenu");
-        when(bertEmbeddingsService.generateEmbedding("Titre\n\ncontenu")).thenReturn(new float[]{1.0f, 2.0f});
+        when(bertEmbeddingsService.buildIndexText("Titre", "Auteur", "rapport", "doc.pdf", "contenu"))
+                .thenReturn("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu");
+        when(bertEmbeddingsService.generateEmbedding("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu"))
+                .thenReturn(new float[]{1.0f, 2.0f});
         service.addDocumentToDocumentIndex(dto, "contenu");
 
         when(indexRepository.findByIndexName(INDEX_NAME)).thenReturn(Optional.empty());

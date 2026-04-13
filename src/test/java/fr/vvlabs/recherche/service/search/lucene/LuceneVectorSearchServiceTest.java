@@ -134,6 +134,83 @@ class LuceneVectorSearchServiceTest {
         assertThat(result.getFragments().getFirst().getId()).isEqualTo("1");
     }
 
+    @Test
+    void search_withProductionThresholdCanDropRelevantVectorMatch() throws Exception {
+        StandardAnalyzer analyzer = new StandardAnalyzer();
+        ByteBuffersDirectory directory = new ByteBuffersDirectory();
+        addDocument(
+                directory,
+                analyzer,
+                "1",
+                "Guide Procedure",
+                "Alice",
+                "note",
+                "01/03/2026 10:00:00",
+                "guide.pdf",
+                "procedure interne",
+                new float[]{0.4f, 0.9165151f}
+        );
+
+        when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+        when(bertEmbeddingsService.generateEmbedding("procedure")).thenReturn(new float[]{1.0f, 0.0f});
+
+        LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
+        ReflectionTestUtils.setField(service, "maxResults", 5);
+        ReflectionTestUtils.setField(service, "candidateMultiplier", 2);
+        ReflectionTestUtils.setField(service, "minScore", 0.75f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
+
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setQuery("procedure");
+
+        SearchResultDTO result = service.search(request);
+
+        assertThat(result.getNbResults()).isZero();
+
+        ReflectionTestUtils.setField(service, "minScore", 0.55f);
+
+        SearchResultDTO relaxedResult = service.search(request);
+
+        assertThat(relaxedResult.getNbResults()).isEqualTo(1);
+        assertThat(relaxedResult.getFragments().getFirst().getId()).isEqualTo("1");
+    }
+
+    @Test
+    void search_canFindDocumentFromAuthorTextEmbeddedInVector() throws Exception {
+        StandardAnalyzer analyzer = new StandardAnalyzer();
+        ByteBuffersDirectory directory = new ByteBuffersDirectory();
+        addDocument(
+                directory,
+                analyzer,
+                "1",
+                "Guide interne",
+                "Marie-France FROMAGE",
+                "note",
+                "01/03/2026 10:00:00",
+                "guide.pdf",
+                "contenu divers",
+                new float[]{1.0f, 0.0f}
+        );
+
+        when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+        when(bertEmbeddingsService.generateEmbedding("marie")).thenReturn(new float[]{1.0f, 0.0f});
+
+        LuceneVectorSearchService service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
+        ReflectionTestUtils.setField(service, "maxResults", 5);
+        ReflectionTestUtils.setField(service, "candidateMultiplier", 2);
+        ReflectionTestUtils.setField(service, "minScore", 0.55f);
+        ReflectionTestUtils.setField(service, "minQueryLength", 3);
+
+        SearchRequestDTO request = new SearchRequestDTO();
+        request.setQuery("marie");
+
+        SearchResultDTO result = service.search(request);
+
+        assertThat(result.getNbResults()).isEqualTo(1);
+        assertThat(result.getFragments().getFirst().getId()).isEqualTo("1");
+        assertThat(result.getFragments().getFirst().getAuthor()).isEqualTo("Marie-France FROMAGE");
+    }
+
     private static void addDocument(
             ByteBuffersDirectory directory,
             StandardAnalyzer analyzer,

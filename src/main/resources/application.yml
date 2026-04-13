@@ -98,7 +98,9 @@ app:
       # Augmenter peut ameliorer la pertinence mais degrade les performances.
       candidate-multiplier: 4
       # Score minimal pour considerer un voisin vectoriel comme pertinent.
-      min-score: 0.75
+      # Une valeur trop haute elimine facilement des documents pourtant proches
+      # sur des requetes courtes ou des corpus heterogenes.
+      min-score: 0.55
       # Longueur minimale de requete utile avant de lancer un KNN sans filtre.
       min-query-length: 3
     # Recherche approximative sur les requetes textuelles.
@@ -128,7 +130,9 @@ app:
       # Nombre maximal de resultats semantiques retournes.
       max-results: 25
       # Score minimum pour conserver un resultat semantique.
-      min-score: 0.35
+      # Le score final melange semantique et lexical; garder 0.35 exclut vite
+      # des correspondances utiles quand l'embedding est moyen mais le texte matche.
+      min-score: 0.10
       # Poids du score semantique dans le score final.
       semantic-weight: 0.75
       # Poids du score lexical dans le score final.
@@ -148,7 +152,7 @@ app:
       # Resolution de rendu des pages PDF avant OCR.
       pdfDpi: 70
       # Chemin des donnees de langue Tesseract.
-      # A adapter selon le systeme du testeur.
+      # Par defaut, le POC cible un poste Windows local.
       dataPath: C:/Program Files/Tesseract-OCR/tessdata
       # Langue principale de l'OCR.
       language: fra

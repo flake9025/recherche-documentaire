@@ -8,6 +8,9 @@ app:
     default: bert
   search:
     default: bert
+  parser.ocr:
+    tesseract:
+      dataPath: /usr/share/tessdata
   embeddings:
     store:
       default: hashmap

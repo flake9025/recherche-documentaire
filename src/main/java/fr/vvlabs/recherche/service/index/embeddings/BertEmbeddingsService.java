@@ -10,12 +10,12 @@ import ai.djl.repository.zoo.ZooModel;
 import ai.djl.translate.TranslateException;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Objects;
 
 @Service
 @Slf4j
@@ -38,7 +38,7 @@ public class BertEmbeddingsService {
     }
 
     public float[] generateEmbedding(String text) {
-        String normalizedText = normalize(text);
+        String normalizedText = StringUtils.trimToEmpty(text);
         if (normalizedText.isBlank()) {
             return new float[0];
         }
@@ -72,22 +72,14 @@ public class BertEmbeddingsService {
         return vector;
     }
 
-    public String buildIndexText(String title, String content) {
-        // On combine titre et contenu pour que le vecteur capture a la fois
-        // le sujet du document et son texte utile.
-        String safeTitle = normalize(title);
-        String safeContent = normalize(content);
-        if (safeContent.isBlank()) {
-            return safeTitle;
-        }
-        if (safeTitle.isBlank()) {
-            return safeContent;
-        }
-        return safeTitle + "\n\n" + safeContent;
-    }
-
-    private String normalize(String text) {
-        return Objects.toString(text, "").trim();
+    public String buildIndexText(String title, String author, String category, String filename, String content) {
+        // On aligne le texte projete en embedding sur les champs textuels
+        // indexes en Lucene pour eviter qu'un moteur retrouve moins
+        // d'information qu'un autre.
+        return java.util.stream.Stream.of(title, author, category, filename, content)
+                .map(StringUtils::trimToEmpty)
+                .filter(StringUtils::isNotBlank)
+                .collect(java.util.stream.Collectors.joining("\n\n"));
     }
 
     private synchronized void ensureModelLoaded() throws ModelNotFoundException, MalformedModelException, IOException {

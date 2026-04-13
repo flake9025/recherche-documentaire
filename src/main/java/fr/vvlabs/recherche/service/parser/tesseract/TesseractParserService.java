@@ -5,6 +5,7 @@ import fr.vvlabs.recherche.service.parser.OCRType;
 import lombok.extern.slf4j.Slf4j;
 import net.sourceforge.tess4j.Tesseract;
 import net.sourceforge.tess4j.TesseractException;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -94,10 +95,10 @@ public class TesseractParserService implements OCRService {
             return tesseract;
         }
         tesseract = new Tesseract();
-        if (hasText(dataPath)) {
+        if (StringUtils.isNotBlank(dataPath)) {
             tesseract.setDatapath(dataPath);
         }
-        if (hasText(language)) {
+        if (StringUtils.isNotBlank(language)) {
             tesseract.setLanguage(language);
         }
         if (pageSegMode >= 0) {
@@ -110,8 +111,5 @@ public class TesseractParserService implements OCRService {
         return tesseract;
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
-    }
 }
 

@@ -9,6 +9,7 @@ import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.search.SearchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
@@ -65,7 +66,7 @@ public class LuceneSearchService implements SearchService {
         parser.setDefaultOperator(QueryParser.Operator.OR);
 
         Query baseQuery;
-        if (hasText(queryText)) {
+        if (StringUtils.isNotBlank(queryText)) {
             String escapedText = QueryParser.escape(queryText.trim());
             baseQuery = parser.parse(escapedText);
         } else {
@@ -101,7 +102,7 @@ public class LuceneSearchService implements SearchService {
 
                 LocalDate documentDate = null;
                 String indexedDate = doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT);
-                if (hasText(indexedDate)) {
+                if (StringUtils.isNotBlank(indexedDate)) {
                     try {
                         documentDate = LocalDateTime.parse(indexedDate.trim(), INDEX_DATE_FORMATTER).toLocalDate();
                     } catch (DateTimeParseException ignored) {
@@ -145,7 +146,7 @@ public class LuceneSearchService implements SearchService {
     }
 
     private void addFilter(BooleanQuery.Builder builder, String field, String value) throws Exception {
-        if (!hasText(value)) {
+        if (StringUtils.isBlank(value)) {
             return;
         }
 
@@ -155,7 +156,4 @@ public class LuceneSearchService implements SearchService {
         builder.add(filterQuery, BooleanClause.Occur.MUST);
     }
 
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
-    }
 }
