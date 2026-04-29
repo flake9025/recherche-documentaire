@@ -53,7 +53,9 @@ public class FSStorageService implements StorageService {
         Path destinationFile = storageDir.resolve(filename);
 
         log.info("Storing file: {} -> {}", originalFilename, destinationFile);
-        Files.copy(file.getInputStream(), destinationFile, StandardCopyOption.REPLACE_EXISTING);
+        try (var input = file.getInputStream()) {
+            Files.copy(input, destinationFile, StandardCopyOption.REPLACE_EXISTING);
+        }
         log.info("File stored successfully: {}", destinationFile);
 
         return destinationFile;

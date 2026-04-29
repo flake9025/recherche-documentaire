@@ -21,7 +21,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -94,7 +93,7 @@ public class BulkIndexController {
 
                 Path documentFilePath = storageServiceFactory.getDefaultStorageService().storeFile(file, uniqueTitre);
                 Path uniquePath = documentFilePath.getParent().resolve(uniqueFilename);
-                Files.move(documentFilePath, uniquePath, StandardCopyOption.REPLACE_EXISTING);
+                storageServiceFactory.getDefaultStorageService().moveFile(documentFilePath, uniquePath);
 
                 log.debug("Fichier {} stocke a: {}", i, uniquePath);
 

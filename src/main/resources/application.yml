@@ -162,10 +162,24 @@ app:
       oem: 1
   storage:
     # Backend de stockage des documents sources.
-    # Valeur disponible dans ce POC : `fs`.
+    # Valeurs disponibles : `fs` (systeme de fichiers) ou `s3` (S3/MinIO).
     default: fs
-    # Repertoire local de stockage des documents importes.
+    # Repertoire local de stockage des documents importes (mode `fs`).
     path: ./storage/documents
+    s3:
+      # Active le bean S3 (necessite un serveur S3 ou MinIO).
+      enabled: false
+      # Endpoint S3 / MinIO (laisser vide pour AWS S3 natif).
+      endpoint: http://localhost:9000
+      region: us-east-1
+      access-key: minioadmin
+      secret-key: minioadmin
+      # Nom du bucket cible.
+      bucket: documents
+      # Cache local des objets S3 pour compatibilite avec le reste du POC.
+      cache-path: ./storage/s3-cache
+      # Cree le bucket au demarrage s'il n'existe pas (dev/test uniquement).
+      auto-create-bucket: true
   cipher:
     # Active le chiffrement de certaines donnees persistees.
     # Pour un POC public, cette cle ne doit pas etre consideree comme secrete.

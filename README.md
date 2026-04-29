@@ -83,7 +83,7 @@ le meme contenu textuel que Lucene:
 
 ## Stores d'embeddings BERT
 
-Le projet a ete prepare pour plusieurs implementations de store vectoriel:
+Le projet supporte plusieurs implementations de store vectoriel:
 
 - `hashmap`
 - `faiss-remote`
@@ -111,13 +111,17 @@ Mode local du POC:
 
 ### `faiss-remote`
 
-Mode d'integration prevu pour un service externe FAISS:
+Service Python FAISS livre dans `faiss-service/`:
 
-- le POC Java appelle un service distant via HTTP
-- ce service n'est pas encore livre dans ce repository
-- il pourra etre fourni plus tard sous forme d'image Docker Python/C++
+- API REST FastAPI (port `8090`)
+- index `IndexFlatIP` avec normalisation L2 (similarite cosinus)
+- filtres categorie/auteur/date identiques au store `hashmap`
+- `limit <= 0` traite comme "sans limite"
+- le POC Java appelle ce service via `FaissRemoteBertEmbeddingsStore`
 
-Configuration:
+Le moyen le plus simple de le tester est le `docker-compose.yml` fourni (voir section **Integration FAISS avec Docker Compose**).
+
+Configuration manuelle:
 
 ```yaml
 app:
@@ -173,6 +177,8 @@ app:
         dataPath: C:/Program Files/Tesseract-OCR/tessdata
   storage:
     default: fs
+    s3:
+      enabled: false
   cipher:
     enabled: true
   task:
@@ -188,7 +194,9 @@ app:
 - `app.search.vector.max-results`: nombre maximal de resultats du moteur `lucene-vector`
 - `app.search.vector.candidate-multiplier`: multiplicateur du nombre de candidats KNN explores par `lucene-vector`
 - `app.embeddings.store.default`: implementation du store BERT
-- `app.embeddings.store.faiss.enabled`: active le client du futur service FAISS distant
+- `app.embeddings.store.faiss.enabled`: active le client FAISS distant
+- `app.storage.default`: backend de stockage (`fs` ou `s3`)
+- `app.storage.s3.enabled`: active le bean S3 (necessite un serveur S3 ou MinIO)
 - `app.task.ocr.enabled`: active la tache OCR asynchrone
 - `app.search.wildcard`: ajoute un wildcard sur certaines requetes non Lucene
 - `app.search.distance.enabled`: active l'extension fuzzy configuree pour les requetes non Lucene
@@ -232,6 +240,8 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 - Tesseract
 - DJL
 - Hugging Face sentence-transformers
+- Python 3.11 + FastAPI + FAISS (service `faiss-service/`)
+- AWS SDK v2 S3 (compatible MinIO)
 
 ## Demarrage local
 
@@ -254,7 +264,7 @@ app:
 Le profil optionnel `local-windows` peut aussi servir a isoler ce chemin si vous
 preferez ne pas le laisser dans votre configuration principale.
 
-Acces utiles:
+Acces utiles en mode local:
 
 - UI web: `http://localhost:8080/index.html`
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
@@ -263,6 +273,8 @@ Acces utiles:
 - Prometheus: `http://localhost:8080/actuator/prometheus`
 
 ## Docker
+
+### Image Spring Boot seule
 
 ```bash
 docker build -t poc-recherche-documentaire .
@@ -283,13 +295,118 @@ Sous Linux/Docker, lancer explicitement un des profils metier:
 
 Chacun surcharge `app.parser.ocr.tesseract.dataPath` avec le chemin Linux adapte.
 
+## Integration FAISS avec Docker Compose
+
+Le fichier `docker-compose.yml` demarre les deux services en une commande:
+
+```bash
+docker compose up --build
+```
+
+Ce qui est lance:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `faiss` | 8090 | Service Python FAISS (`faiss-service/`) |
+| `app`   | 8080 | Spring Boot en profil `bert` + store `faiss-remote` |
+
+L'application attend que le healthcheck FAISS soit vert avant de demarrer (`depends_on: condition: service_healthy`).
+
+Un volume nomme `djl-cache` persiste le modele `sentence-transformers/all-MiniLM-L6-v2` entre les redemarrages pour eviter un re-telechargement.
+
+Arret:
+
+```bash
+docker compose down
+```
+
+Acces utiles une fois demarre:
+
+- UI web: `http://localhost:8080/index.html`
+- Swagger: `http://localhost:8080/swagger-ui/index.html`
+- FAISS stats: `http://localhost:8090/api/faiss/stats`
+- FAISS docs API: `http://localhost:8090/docs`
+
+## Stockage S3 / MinIO
+
+Le backend de stockage `s3` permet d'utiliser n'importe quel serveur S3 compatible au lieu du systeme de fichiers local.
+
+**Aucune image Docker custom n'est necessaire.** Le client AWS SDK v2 utilise `endpointOverride` et `forcePathStyleAccess(true)`, ce qui le rend compatible avec toute implementation S3 standard :
+
+| Serveur | Usage |
+|---------|-------|
+| `minio/minio` | image Docker officielle, ideal en local |
+| `localstack/localstack` | alternative locale avec emulation AWS |
+| AWS S3 | laisser `endpoint` vide, credentiels IAM |
+
+### Configuration
+
+Dans `application.yml`:
+
+```yaml
+app:
+  storage:
+    default: s3
+    s3:
+      enabled: true
+      endpoint: http://localhost:9000   # vide pour AWS S3 natif
+      region: us-east-1
+      access-key: minioadmin
+      secret-key: minioadmin
+      bucket: documents
+      cache-path: ./storage/s3-cache
+      auto-create-bucket: true
+```
+
+### Test local avec MinIO (image officielle)
+
+```bash
+docker run -d --name minio \
+  -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio server /data --console-address ":9001"
+```
+
+- Console MinIO: `http://localhost:9001`
+- API S3: `http://localhost:9000`
+
+### Test local avec LocalStack
+
+```bash
+docker run -d --name localstack \
+  -p 4566:4566 \
+  -e SERVICES=s3 \
+  localstack/localstack
+```
+
+Adapter ensuite la configuration :
+
+```yaml
+app:
+  storage:
+    s3:
+      endpoint: http://localhost:4566
+      access-key: test
+      secret-key: test
+```
+
+### Fonctionnement
+
+- les documents uploades sont stockes dans le bucket S3
+- un cache local (`s3-cache/`) sert de relais pour les composants qui manipulent des `Path`
+- le bucket est cree automatiquement au demarrage si `auto-create-bucket: true`
+- les statistiques (`AppStatsService`) refletent uniquement le cache local, pas le bucket complet
+- `moveFile` effectue un copy + delete sur S3 puis un move local du cache
+
 ## Limites actuelles
 
 - POC oriente demonstration
 - pas de multi-tenant
 - pas de gestion avancee des droits
 - mode `hashmap` non scalable pour gros corpus
-- `faiss-remote` prepare cote Java mais service externe non encore livre
+- service FAISS entierement en memoire : un redemarrage du conteneur vide l'index (recharger les documents depuis Spring Boot)
+- mode `s3` : les statistiques refletent le cache local, pas le bucket complet
 - `qdrant` et `milvus` encore en placeholders
 
 ## Tests
@@ -301,6 +418,7 @@ La suite de tests couvre a present:
 - recherche Lucene, BERT et Lucene vectorielle
 - factories applicatives principales
 - stores BERT `hashmap`, `faiss-remote`, `qdrant`, `milvus`
+- stockage S3 (avec S3Client mocke)
 - OCR PDFBox
 - service de chiffrement
 

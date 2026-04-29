@@ -93,7 +93,7 @@ public class PDFBoxParserService implements OCRService {
             log.info("Millis ecoules pour l'OCR Pdfbox : {}", Duration.between(startTime, LocalTime.now()).toMillis());
             log.debug("Parsed content : {}", text);
         } catch (Exception e) {
-            log.error("Parsing error for {}", fileName, e.getMessage());
+            log.error("Parsing error for {}: {}", fileName, e.getMessage(), e);
         }
         return text;
     }

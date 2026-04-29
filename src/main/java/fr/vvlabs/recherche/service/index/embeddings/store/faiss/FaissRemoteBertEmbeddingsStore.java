@@ -10,6 +10,7 @@ import fr.vvlabs.recherche.service.index.embeddings.faiss.FaissRemoteStoreDocume
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -45,6 +46,7 @@ public class FaissRemoteBertEmbeddingsStore implements BertEmbeddingsStore {
         requireEnabled();
         restClient.post()
                 .uri("/api/faiss/documents")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(toRemoteDocument(document))
                 .retrieve()
                 .toBodilessEntity();
@@ -87,6 +89,7 @@ public class FaissRemoteBertEmbeddingsStore implements BertEmbeddingsStore {
                 : entities.stream().map(this::toRemoteDocument).toList();
         restClient.put()
                 .uri("/api/faiss/documents")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
                 .toBodilessEntity();
@@ -97,6 +100,7 @@ public class FaissRemoteBertEmbeddingsStore implements BertEmbeddingsStore {
         requireEnabled();
         FaissRemoteSearchResponse response = restClient.post()
                 .uri("/api/faiss/search")
+                .contentType(MediaType.APPLICATION_JSON)
                 .body(new FaissRemoteSearchRequest(
                         query.queryVector(),
                         query.category(),
