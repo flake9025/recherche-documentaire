@@ -9,6 +9,15 @@ COPY src ./src
 # Le packaging du conteneur ne rejoue pas les tests, deja executes en CI.
 RUN mvn -B -DskipTests package
 
+# Extraction des couches du jar en etape intermediaire.
+# Les dependances (rarement modifiees) et le code applicatif
+# occupent des couches Docker separees : seule la couche applicative
+# est retransferee lors d'un rebuild apres une simple modification du code.
+FROM eclipse-temurin:25-jre AS extract
+WORKDIR /workspace
+COPY --from=build /workspace/target/poc-recherche-documentaire-*.jar app.jar
+RUN java -Djarmode=layertools -jar app.jar extract --destination extracted
+
 # Image d'execution minimale avec un JRE 25.
 FROM eclipse-temurin:25-jre
 WORKDIR /app
@@ -22,12 +31,22 @@ RUN apt-get update \
 # Repertoires utilises par H2, le stockage documentaire et Lucene.
 RUN mkdir -p /app/storage/documents /app/storage/database /app/lucene-suggest
 
-# On embarque uniquement le jar final produit a l'etape precedente.
-COPY --from=build /workspace/target/poc-recherche-documentaire-*.jar /app/app.jar
+# Couche 1 : dependances externes (stables, rarement retransferees).
+COPY --from=extract /workspace/extracted/dependencies/ ./
+# Couche 2 : Spring Boot loader (stable).
+COPY --from=extract /workspace/extracted/spring-boot-loader/ ./
+# Couche 3 : dependances SNAPSHOT (semi-stables).
+COPY --from=extract /workspace/extracted/snapshot-dependencies/ ./
+# Couche 4 : code applicatif (change a chaque release).
+COPY --from=extract /workspace/extracted/application/ ./
 
 EXPOSE 8080
-# Les donnees applicatives restent persistantes hors du conteneur.
-VOLUME ["/app/storage", "/app/lucene-suggest"]
+# Les donnees applicatives et le cache DJL restent persistants hors du conteneur.
+# Monter /root/.djl.ai evite de retelecharger PyTorch (~600 MB) a chaque redemarrage.
+VOLUME ["/app/storage", "/app/lucene-suggest", "/root/.djl.ai"]
 
-# Demarrage standard de l'application Spring Boot.
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+# JAVA_OPTS permet de surcharger les options JVM au runtime :
+#   docker run -e JAVA_OPTS="-Xmx512m" ...
+# MaxRAMPercentage=50 laisse de la memoire pour Tesseract et les buffers natifs.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=50 -XX:+UseContainerSupport"
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS} org.springframework.boot.loader.launch.JarLauncher"]

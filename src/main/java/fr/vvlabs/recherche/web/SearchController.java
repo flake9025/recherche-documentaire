@@ -88,7 +88,7 @@ public class SearchController {
 
                 try {
                     indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
-                } catch (IOException e) {
+                } catch (Exception e) {
                     log.error("addToIndex error : {}", e.getMessage(), e);
                 }
             });

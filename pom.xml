@@ -170,9 +170,17 @@
             <artifactId>tika-core</artifactId>
             <version>3.2.0</version>
         </dependency>
+        <!-- Parsers cibles uniquement (PDF + texte brut).
+             Remplace tika-parsers-standard-package qui embarquait des parseurs
+             audio/video/image inutilises et gonflait le jar de ~100 MB. -->
         <dependency>
             <groupId>org.apache.tika</groupId>
-            <artifactId>tika-parsers-standard-package</artifactId>
+            <artifactId>tika-parser-pdf-module</artifactId>
+            <version>3.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-parser-text-module</artifactId>
             <version>3.2.0</version>
         </dependency>
         <dependency>
@@ -218,6 +226,11 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                    <!-- Active la strategie de layers pour optimiser les couches Docker.
+                         Les dependances stables et le code applicatif occupent des couches separees. -->
+                    <layers>
+                        <enabled>true</enabled>
+                    </layers>
                 </configuration>
             </plugin>
             <plugin>

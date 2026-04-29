@@ -278,7 +278,33 @@ Acces utiles en mode local:
 
 ```bash
 docker build -t poc-recherche-documentaire .
-docker run --rm -p 8080:8080 -e SPRING_PROFILES_ACTIVE=lucene-vector -v ${PWD}/storage:/app/storage -v ${PWD}/lucene-suggest:/app/lucene-suggest poc-recherche-documentaire
+docker run --rm -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=lucene-vector \
+  -v ${PWD}/storage:/app/storage \
+  -v ${PWD}/lucene-suggest:/app/lucene-suggest \
+  poc-recherche-documentaire
+```
+
+Pour le mode `bert` ou `lucene-vector`, monter aussi le cache DJL pour eviter
+de retelecharger PyTorch (~600 MB) a chaque redemarrage :
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=bert \
+  -v ${PWD}/storage:/app/storage \
+  -v ${PWD}/lucene-suggest:/app/lucene-suggest \
+  -v djl-cache:/root/.djl.ai \
+  poc-recherche-documentaire
+```
+
+Limiter la memoire sur un NAS via `JAVA_OPTS` (par defaut `MaxRAMPercentage=50`) :
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=lucene \
+  -e JAVA_OPTS="-Xmx512m" \
+  -v ${PWD}/storage:/app/storage \
+  poc-recherche-documentaire
 ```
 
 L'image Docker:
@@ -289,11 +315,31 @@ L'image Docker:
 
 Sous Linux/Docker, lancer explicitement un des profils metier:
 
-- `lucene`
+- `lucene` — moteur le plus leger, recommande sur NAS
 - `lucene-vector`
-- `bert`
+- `bert` — necessite ~600 MB de natifs PyTorch au premier demarrage
 
 Chacun surcharge `app.parser.ocr.tesseract.dataPath` avec le chemin Linux adapte.
+
+### Optimisation Docker (layered jar)
+
+Le Dockerfile utilise `jarmode=layertools` pour separer les dependances du code
+applicatif en 4 couches Docker distinctes.
+Lors d'un rebuild apres une modification du code, seule la couche `application/`
+est retransferee — les dependances (~300 MB) restent en cache local et ne sont
+pas re-uploadees sur le NAS.
+
+### Note architecture NAS
+
+Verifier l'architecture du NAS avant de construire l'image :
+
+| Architecture NAS | Flag `--platform` |
+|---|---|
+| x86_64 (Synology DS+, QNAP x86) | `--platform linux/amd64` |
+| ARM64 (Synology ARMv8) | `--platform linux/arm64` |
+
+Les natifs DJL/PyTorch sont telecharges automatiquement pour la bonne
+architecture si le cache `/root/.djl.ai` est vide.
 
 ## Integration FAISS avec Docker Compose
 
