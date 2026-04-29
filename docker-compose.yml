@@ -1,0 +1,53 @@
+# Intégration FAISS pour le POC recherche documentaire.
+#
+# Démarre :
+#   - faiss   : service Python FAISS sur le port 8090
+#   - app     : application Spring Boot (profil bert) sur le port 8080
+#
+# Usage :
+#   docker compose up --build
+#
+# Arrêt :
+#   docker compose down
+#
+# Note : le premier démarrage est lent car Maven télécharge les dépendances
+# et DJL télécharge le modèle sentence-transformers/all-MiniLM-L6-v2 au
+# premier appel d'indexation.
+
+services:
+
+  faiss:
+    build: ./faiss-service
+    ports:
+      - "8090:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/api/faiss/stats')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  app:
+    build: faiss-service
+    ports:
+      - "8080:8080"
+    environment:
+      # Active le pipeline d'indexation et de recherche BERT.
+      SPRING_PROFILES_ACTIVE: bert
+      # Redirige le store d'embeddings vers le service FAISS distant.
+      APP_EMBEDDINGS_STORE_DEFAULT: faiss-remote
+      APP_EMBEDDINGS_STORE_FAISS_ENABLED: "true"
+      APP_EMBEDDINGS_STORE_FAISS_BASE_URL: http://faiss:8090
+    volumes:
+      # Persistance des documents et de la base H2 entre les redémarrages.
+      - ./storage:/app/storage
+      - ./lucene-suggest:/app/lucene-suggest
+      # Cache du modèle DJL/HuggingFace pour éviter un re-téléchargement.
+      - djl-cache:/root/.djl.ai
+    depends_on:
+      faiss:
+        condition: service_healthy
+
+volumes:
+  # Cache persistant du modèle sentence-transformers entre les builds.
+  djl-cache:
