@@ -1,6 +1,8 @@
 package fr.vvlabs.recherche.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,15 +13,17 @@ import org.springframework.web.client.RestClient;
 public class RestClientConfig {
 
     /**
-     * Configure le RestClient.Builder avec l'ObjectMapper Spring Boot
-     * (JavaTimeModule inclus) pour eviter que Jackson echoue silencieusement
-     * sur LocalDateTime / LocalDate dans les DTOs FAISS distants.
-     * Spring Boot 4 ne fournit plus RestClient.Builder comme @Bean prototype,
-     * donc @ConditionalOnMissingBean laisse ce bean actif.
+     * Configure le RestClient.Builder avec un ObjectMapper incluant JavaTimeModule
+     * pour serialiser correctement LocalDateTime / LocalDate dans les DTOs FAISS distants.
+     * L'ObjectMapper est cree localement pour eviter toute dependance sur l'ordre
+     * d'initialisation de l'auto-configuration Spring Boot 4.
      */
     @Bean
     @ConditionalOnMissingBean(RestClient.Builder.class)
-    RestClient.Builder restClientBuilder(ObjectMapper objectMapper) {
+    RestClient.Builder restClientBuilder() {
+        ObjectMapper objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return RestClient.builder()
                 .messageConverters(converters -> {
                     converters.removeIf(c -> c instanceof MappingJackson2HttpMessageConverter);
