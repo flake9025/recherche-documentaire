@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.time.LocalDateTime;
 import java.util.AbstractMap;
 import java.util.List;
@@ -144,7 +145,7 @@ public class DocumentService {
             log.debug("OCR is disabled");
             return "";
         }
-        DataType dataType = DataType.valueOf(documentDTO.getCategorie());
+        DataType dataType = DataType.valueOf(documentDTO.getCategorie().toUpperCase(Locale.ROOT));
         Path documentPath = getDocumentPath(documentDTO.getNomFichier());
         OCRService ocrService = ocrServiceFactory.getOCRService(ocrType);
         try (InputStream stream = Files.newInputStream(documentPath)) {
