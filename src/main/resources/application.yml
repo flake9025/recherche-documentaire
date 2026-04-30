@@ -11,13 +11,6 @@ spring:
   main:
     # Application web Spring MVC classique.
     web-application-type: servlet
-  servlet:
-    encoding:
-      # Force UTF-8 sur toutes les requetes (multipart inclus) et les reponses.
-      # Sans ce reglage, les champs texte des formulaires multipart sont lus
-      # en ISO-8859-1 par defaut, ce qui corrompt les accents.
-      charset: UTF-8
-      force: true
   datasource:
     # Base H2 stockee sur disque pour conserver les donnees entre deux redemarrages.
     # Pour repartir de zero, supprimer le dossier `storage/database`.
@@ -40,6 +33,12 @@ spring:
     # peuvent produire un schema different selon l'environnement.
     hibernate.ddl-auto: none
   servlet:
+    encoding:
+      # Force UTF-8 sur toutes les requetes (multipart inclus) et les reponses.
+      # Sans ce reglage, les champs texte des formulaires multipart sont lus
+      # en ISO-8859-1 par defaut, ce qui corrompt les accents.
+      charset: UTF-8
+      force: true
     multipart:
       # Upload de fichiers pour l'interface web et l'API.
       enabled: true
