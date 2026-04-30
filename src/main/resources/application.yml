@@ -23,6 +23,10 @@ spring:
       # Console H2 accessible en local sur /h2-console.
       enabled: true
       path: /h2-console
+      settings:
+        # Autorise les connexions distantes a la console H2.
+        # A ne pas activer en production.
+        web-allow-others: true
   jpa:
     # Dialecte SQL H2.
     database-platform: org.hibernate.dialect.H2Dialect
