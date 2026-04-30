@@ -9,6 +9,8 @@ public class AppStatsDTO {
     private String indexEngine;
     private String searchEngine;
     private String embeddingsStore;
+    private String embeddingsModelId;
+    private boolean embeddingsModelLoaded;
 
     private long databaseDocumentCount;
     private long pendingOcrCount;

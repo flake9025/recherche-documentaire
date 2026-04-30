@@ -3,6 +3,7 @@ package fr.vvlabs.recherche.service.stats;
 import fr.vvlabs.recherche.config.LuceneConfig;
 import fr.vvlabs.recherche.dto.AppStatsDTO;
 import fr.vvlabs.recherche.repository.DocumentRepository;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStoreFactory;
 import fr.vvlabs.recherche.service.storage.StorageServiceFactory;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class AppStatsService {
     private final Environment environment;
     private final DocumentRepository documentRepository;
     private final LuceneConfig luceneConfig;
+    private final BertEmbeddingsService bertEmbeddingsService;
     private final BertEmbeddingsStoreFactory bertEmbeddingsStoreFactory;
     private final StorageServiceFactory storageServiceFactory;
 
@@ -43,6 +45,8 @@ public class AppStatsService {
         stats.setIndexEngine(indexEngine);
         stats.setSearchEngine(searchEngine);
         stats.setEmbeddingsStore(embeddingsStore);
+        stats.setEmbeddingsModelId(bertEmbeddingsService.getModelId());
+        stats.setEmbeddingsModelLoaded(bertEmbeddingsService.isModelLoaded());
         stats.setDatabaseDocumentCount(documentRepository.count());
         stats.setPendingOcrCount(documentRepository.findByOcrIndexDoneFalse().size());
         stats.setInMemoryEmbeddingsCount(resolveEmbeddingsCount());

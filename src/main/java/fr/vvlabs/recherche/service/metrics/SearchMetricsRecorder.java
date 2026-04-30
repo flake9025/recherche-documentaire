@@ -1,6 +1,5 @@
 package fr.vvlabs.recherche.service.metrics;
 
-import com.sun.management.OperatingSystemMXBean;
 import fr.vvlabs.recherche.dto.SearchMetricsDTO;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
@@ -11,8 +10,8 @@ import io.micrometer.core.instrument.Timer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.lang.management.ManagementFactory;
-import java.lang.management.MemoryMXBean;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -20,8 +19,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class SearchMetricsRecorder {
 
     private final MeterRegistry meterRegistry;
-    private final MemoryMXBean memoryMxBean;
-    private final OperatingSystemMXBean operatingSystemMxBean;
 
     private final String indexEngine;
     private final String searchEngine;
@@ -36,8 +33,6 @@ public class SearchMetricsRecorder {
             @Value("${app.parser.ocr.default:pdfbox}") String ocrEngine
     ) {
         this.meterRegistry = meterRegistry;
-        this.memoryMxBean = ManagementFactory.getMemoryMXBean();
-        this.operatingSystemMxBean = ManagementFactory.getPlatformMXBean(OperatingSystemMXBean.class);
         this.indexEngine = indexEngine;
         this.searchEngine = searchEngine;
         this.embeddingsStore = embeddingsStore;
@@ -45,7 +40,7 @@ public class SearchMetricsRecorder {
         registerConfigurationGauge();
     }
 
-    public void recordSearch(long responseTimeMs, long rebuildTimeMs, int resultCount, boolean rebuildTriggered, String queryKind, String status) {
+    public void recordSearch(long responseTimeMs, long rebuildTimeMs, long embeddingTimeMs, int resultCount, boolean rebuildTriggered, String queryKind, String status) {
         Tags tags = commonTags().and("query_kind", queryKind, "status", status);
 
         Timer.builder("recherche.search.latency")
@@ -53,6 +48,14 @@ public class SearchMetricsRecorder {
                 .tags(tags)
                 .register(meterRegistry)
                 .record(responseTimeMs, TimeUnit.MILLISECONDS);
+
+        if (embeddingTimeMs > 0) {
+            Timer.builder("recherche.search.embedding.latency")
+                    .description("BERT embedding generation latency in milliseconds")
+                    .tags(tags)
+                    .register(meterRegistry)
+                    .record(embeddingTimeMs, TimeUnit.MILLISECONDS);
+        }
 
         DistributionSummary.builder("recherche.search.results")
                 .description("Number of results returned by searches")
@@ -82,26 +85,65 @@ public class SearchMetricsRecorder {
         }
     }
 
-    public SearchMetricsDTO snapshot(long responseTimeMs, long rebuildTimeMs) {
+    public SearchMetricsDTO snapshot(long responseTimeMs, long rebuildTimeMs, long embeddingTimeMs) {
         SearchMetricsDTO metrics = new SearchMetricsDTO();
         metrics.setResponseTimeMs(responseTimeMs);
         metrics.setRebuildTimeMs(rebuildTimeMs);
+        metrics.setEmbeddingTimeMs(embeddingTimeMs);
         metrics.setSearchEngine(searchEngine);
         metrics.setIndexEngine(indexEngine);
         metrics.setEmbeddingsStore(embeddingsStore);
         metrics.setOcrEngine(ocrEngine);
-        metrics.setSystemCpuUsagePct(toPercent(operatingSystemMxBean == null ? -1.0d : operatingSystemMxBean.getCpuLoad()));
-        metrics.setProcessCpuUsagePct(toPercent(operatingSystemMxBean == null ? -1.0d : operatingSystemMxBean.getProcessCpuLoad()));
-        metrics.setHeapUsedMb(toMb(memoryMxBean.getHeapMemoryUsage().getUsed()));
-        metrics.setHeapMaxMb(toMb(memoryMxBean.getHeapMemoryUsage().getMax()));
-        metrics.setNonHeapUsedMb(toMb(memoryMxBean.getNonHeapMemoryUsage().getUsed()));
-        if (operatingSystemMxBean != null) {
-            long totalMemory = operatingSystemMxBean.getTotalMemorySize();
-            long freeMemory = operatingSystemMxBean.getFreeMemorySize();
-            metrics.setSystemMemoryTotalMb(toMb(totalMemory));
-            metrics.setSystemMemoryUsedMb(toMb(Math.max(totalMemory - freeMemory, 0L)));
-        }
+        metrics.setContainerMemoryUsedMb(readCgroupMemoryMb(
+                "/sys/fs/cgroup/memory.current",           // cgroups v2
+                "/sys/fs/cgroup/memory/memory.usage_in_bytes" // cgroups v1
+        ));
+        metrics.setContainerMemoryLimitMb(readCgroupMemoryLimitMb());
         return metrics;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Lecture RAM conteneur via cgroups (v2 prioritaire, v1 en fallback)
+    // ---------------------------------------------------------------------------
+
+    private long readCgroupMemoryMb(String... paths) {
+        for (String path : paths) {
+            try {
+                Path p = Path.of(path);
+                if (Files.exists(p)) {
+                    String raw = Files.readString(p).trim();
+                    if (!raw.isBlank() && !"max".equals(raw)) {
+                        return Long.parseLong(raw) / (1024L * 1024L);
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return -1L;
+    }
+
+    private long readCgroupMemoryLimitMb() {
+        // cgroups v2 : "max" = pas de limite
+        try {
+            Path p = Path.of("/sys/fs/cgroup/memory.max");
+            if (Files.exists(p)) {
+                String raw = Files.readString(p).trim();
+                if ("max".equals(raw)) return -1L;
+                return Long.parseLong(raw) / (1024L * 1024L);
+            }
+        } catch (Exception ignored) {
+        }
+        // cgroups v1 : valeur très grande = pas de limite
+        try {
+            Path p = Path.of("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+            if (Files.exists(p)) {
+                long val = Long.parseLong(Files.readString(p).trim());
+                if (val > Long.MAX_VALUE / 2) return -1L;
+                return val / (1024L * 1024L);
+            }
+        } catch (Exception ignored) {
+        }
+        return -1L;
     }
 
     private Tags commonTags() {
@@ -119,19 +161,5 @@ public class SearchMetricsRecorder {
                 .description("Active search/index benchmark configuration")
                 .tags(commonTags())
                 .register(meterRegistry);
-    }
-
-    private double toPercent(double ratio) {
-        if (ratio < 0.0d) {
-            return -1.0d;
-        }
-        return Math.round(ratio * 10_000.0d) / 100.0d;
-    }
-
-    private long toMb(long bytes) {
-        if (bytes < 0L) {
-            return -1L;
-        }
-        return bytes / (1024L * 1024L);
     }
 }

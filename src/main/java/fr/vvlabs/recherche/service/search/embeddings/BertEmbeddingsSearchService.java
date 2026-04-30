@@ -66,7 +66,9 @@ public class BertEmbeddingsSearchService implements SearchService {
 
         // La requete utilisateur est elle aussi projetee en embedding, puis comparee
         // aux embeddings documents deja charges en memoire.
+        long encStart = System.nanoTime();
         float[] queryVector = bertEmbeddingsService.generateEmbedding(query);
+        long embeddingTimeMs = (System.nanoTime() - encStart) / 1_000_000L;
         Set<String> queryTokens = tokenize(query);
 
         BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
@@ -87,6 +89,7 @@ public class BertEmbeddingsSearchService implements SearchService {
         SearchResultDTO result = new SearchResultDTO();
         result.setFragments(fragments);
         result.setNbResults(fragments.size());
+        result.setEmbeddingTimeMs(embeddingTimeMs);
         return result;
     }
 
@@ -255,7 +258,11 @@ public class BertEmbeddingsSearchService implements SearchService {
     }
 
     private String normalize(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT).trim();
+        if (value == null) return "";
+        String lower = value.toLowerCase(Locale.ROOT).trim();
+        // Suppression des diacritiques (accents) pour que "hémoglobine" == "hemoglobine"
+        return java.text.Normalizer.normalize(lower, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{InCombiningDiacriticalMarks}", "");
     }
 
     private String formatDate(LocalDateTime dateTime) {

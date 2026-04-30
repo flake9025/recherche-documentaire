@@ -46,6 +46,8 @@ function renderStatsCards(stats) {
         ['Moteur index', stats.indexEngine],
         ['Moteur recherche', stats.searchEngine],
         ['Store embeddings', stats.embeddingsStore],
+        ['Modèle BERT', stats.embeddingsModelId],
+        ['Modèle BERT chargé', stats.embeddingsModelLoaded ? '✅ Oui' : '⏳ Non (premier appel)'],
         ['Documents en base', formatInteger(stats.databaseDocumentCount)],
         ['Documents OCR en attente', formatInteger(stats.pendingOcrCount)],
         ['Documents dans index memoire', formatInteger(stats.inMemoryIndexDocumentCount)],

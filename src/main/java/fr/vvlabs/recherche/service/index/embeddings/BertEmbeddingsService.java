@@ -37,6 +37,10 @@ public class BertEmbeddingsService {
         return modelId;
     }
 
+    public boolean isModelLoaded() {
+        return predictor != null;
+    }
+
     public float[] generateEmbedding(String text) {
         String normalizedText = StringUtils.trimToEmpty(text);
         if (normalizedText.isBlank()) {

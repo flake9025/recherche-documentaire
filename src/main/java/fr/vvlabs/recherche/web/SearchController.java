@@ -2,12 +2,11 @@ package fr.vvlabs.recherche.web;
 
 import fr.vvlabs.recherche.dto.SearchRequestDTO;
 import fr.vvlabs.recherche.dto.SearchResultDTO;
-import fr.vvlabs.recherche.service.document.DocumentService;
-import fr.vvlabs.recherche.service.index.IndexServiceFactory;
 import fr.vvlabs.recherche.service.index.IndexType;
 import fr.vvlabs.recherche.service.metrics.SearchMetricsRecorder;
 import fr.vvlabs.recherche.service.search.SearchService;
 import fr.vvlabs.recherche.service.search.SearchServiceFactory;
+import fr.vvlabs.recherche.service.search.SearchStoreInitializer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalTime;
 
@@ -32,8 +30,7 @@ import java.time.LocalTime;
 @Slf4j
 public class SearchController {
 
-    private final DocumentService documentService;
-    private final IndexServiceFactory indexServiceFactory;
+    private final SearchStoreInitializer searchStoreInitializer;
     private final SearchServiceFactory searchServiceFactory;
     private final SearchMetricsRecorder searchMetricsRecorder;
 
@@ -59,8 +56,6 @@ public class SearchController {
         LocalTime overallStartTime = LocalTime.now();
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
         SearchService searchService = searchServiceFactory.getDefaultSearchService();
-        long rebuildTimeMs = 0L;
-        boolean rebuildTriggered = false;
 
         String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
         if (!IndexType.LUCENE.equals(searchService.getType())) {
@@ -73,37 +68,16 @@ public class SearchController {
         }
         effectiveRequest.setQuery(text);
 
-        if (searchService.isSearchStoreEmpty()) {
-            log.info("Search store is empty: building from documents metadata");
-            LocalTime startTime = LocalTime.now();
-            rebuildTriggered = true;
-
-            documentService.findAll().forEach(documentDTO -> {
-                String documentFileText = "";
-                try {
-                    documentFileText = documentService.getFileText(documentDTO);
-                } catch (IOException e) {
-                    log.error("getFileText error : {}", e.getMessage(), e);
-                }
-
-                try {
-                    indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
-                } catch (Exception e) {
-                    log.error("addToIndex error : {}", e.getMessage(), e);
-                }
-            });
-
-            Duration duration = Duration.between(startTime, LocalTime.now());
-            rebuildTimeMs = duration.toMillis();
-            log.info("Elapsed millis for search store rebuild: {}", duration.toMillis());
-        }
+        long rebuildTimeMs = searchStoreInitializer.rebuildIfEmpty(searchService);
+        boolean rebuildTriggered = rebuildTimeMs > 0;
 
         SearchResultDTO result = searchService.search(effectiveRequest);
         long responseTimeMs = Duration.between(overallStartTime, LocalTime.now()).toMillis();
-        result.setMetrics(searchMetricsRecorder.snapshot(responseTimeMs, rebuildTimeMs));
+        result.setMetrics(searchMetricsRecorder.snapshot(responseTimeMs, rebuildTimeMs, result.getEmbeddingTimeMs()));
         searchMetricsRecorder.recordSearch(
                 responseTimeMs,
                 rebuildTimeMs,
+                result.getEmbeddingTimeMs(),
                 result.getNbResults(),
                 rebuildTriggered,
                 resolveQueryKind(effectiveRequest),

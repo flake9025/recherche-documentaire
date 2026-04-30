@@ -7,15 +7,11 @@ public class SearchMetricsDTO {
 
     private long responseTimeMs;
     private long rebuildTimeMs;
+    private long embeddingTimeMs;
     private String searchEngine;
     private String indexEngine;
     private String embeddingsStore;
     private String ocrEngine;
-    private double systemCpuUsagePct;
-    private double processCpuUsagePct;
-    private long heapUsedMb;
-    private long heapMaxMb;
-    private long nonHeapUsedMb;
-    private long systemMemoryUsedMb;
-    private long systemMemoryTotalMb;
+    private long containerMemoryUsedMb;
+    private long containerMemoryLimitMb;
 }

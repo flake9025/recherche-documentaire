@@ -31,21 +31,17 @@ function renderSearchMetrics(metrics, container) {
 
     const responseTime = formatMetricValue(metrics.responseTimeMs, 'ms');
     const rebuildTime = metrics.rebuildTimeMs > 0 ? formatMetricValue(metrics.rebuildTimeMs, 'ms') : null;
-    const systemCpu = formatPercent(metrics.systemCpuUsagePct);
-    const processCpu = formatPercent(metrics.processCpuUsagePct);
-    const heap = formatMemory(metrics.heapUsedMb, metrics.heapMaxMb);
-    const systemMemory = formatMemory(metrics.systemMemoryUsedMb, metrics.systemMemoryTotalMb);
+    const embeddingTime = metrics.embeddingTimeMs > 0 ? formatMetricValue(metrics.embeddingTimeMs, 'ms') : null;
+    const containerRam = formatContainerMemory(metrics.containerMemoryUsedMb, metrics.containerMemoryLimitMb);
 
     container.innerHTML = `
         <span class="runtime-pill">Temps: ${responseTime}</span>
+        ${embeddingTime ? `<span class="runtime-pill">Encoding BERT: ${embeddingTime}</span>` : ''}
         <span class="runtime-pill">Recherche: ${escapeHtml(metrics.searchEngine || 'n/a')}</span>
         <span class="runtime-pill">Index: ${escapeHtml(metrics.indexEngine || 'n/a')}</span>
         <span class="runtime-pill">Store: ${escapeHtml(metrics.embeddingsStore || 'n/a')}</span>
         ${rebuildTime ? `<span class="runtime-pill runtime-pill-warn">Rebuild: ${rebuildTime}</span>` : ''}
-        <span class="runtime-pill">CPU syst.: ${systemCpu}</span>
-        <span class="runtime-pill">CPU proc.: ${processCpu}</span>
-        <span class="runtime-pill">Heap: ${heap}</span>
-        <span class="runtime-pill">RAM: ${systemMemory}</span>
+        ${containerRam ? `<span class="runtime-pill">RAM conteneur: ${containerRam}</span>` : ''}
     `;
 }
 
@@ -56,19 +52,12 @@ function formatMetricValue(value, unit) {
     return `${value} ${unit}`;
 }
 
-function formatPercent(value) {
-    if (value === undefined || value === null || value < 0) {
-        return 'n/a';
-    }
-    return `${Number(value).toFixed(2)} %`;
-}
-
-function formatMemory(used, total) {
+function formatContainerMemory(used, limit) {
     if (used === undefined || used === null || used < 0) {
-        return 'n/a';
+        return null; // non disponible (hors conteneur)
     }
-    if (total === undefined || total === null || total < 0) {
+    if (limit === undefined || limit === null || limit < 0) {
         return `${used} MB`;
     }
-    return `${used} / ${total} MB`;
+    return `${used} / ${limit} MB`;
 }
