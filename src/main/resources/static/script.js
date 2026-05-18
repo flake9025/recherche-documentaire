@@ -38,6 +38,13 @@ function initEventListeners() {
         });
     });
 
+    document.querySelectorAll('[data-switch-tab]').forEach(button => {
+        button.addEventListener('click', () => {
+            const target = button.getAttribute('data-switch-tab');
+            activateTab(target);
+        });
+    });
+
     setupFileDrop();
     setupTabs();
     setDefaultDepositDate();
@@ -94,30 +101,35 @@ function setupFileDrop() {
 
 function setupTabs() {
     const tabButtons = document.querySelectorAll('.tab-button');
-    const tabPanels = document.querySelectorAll('.tab-panel');
 
-    if (tabButtons.length === 0 || tabPanels.length === 0) return;
+    if (tabButtons.length === 0) return;
 
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const target = button.getAttribute('data-tab');
-            if (!target) return;
-
-            tabButtons.forEach(btn => btn.classList.remove('is-active'));
-            tabPanels.forEach(panel => panel.classList.remove('is-active'));
-
-            tabButtons.forEach(btn => {
-                if (btn.getAttribute('data-tab') === target) {
-                    btn.classList.add('is-active');
-                }
-            });
-
-            const panel = document.querySelector(`.tab-panel[data-tab-panel="${target}"]`);
-            if (panel) {
-                panel.classList.add('is-active');
-            }
+            activateTab(target);
         });
     });
+}
+
+function activateTab(target) {
+    if (!target) return;
+
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    tabButtons.forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-tab') === target);
+    });
+
+    tabPanels.forEach(panel => {
+        panel.classList.toggle('is-active', panel.getAttribute('data-tab-panel') === target);
+    });
+
+    const activePanel = document.querySelector(`.tab-panel[data-tab-panel="${target}"]`);
+    if (activePanel) {
+        activePanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
 
 // ==================== RECHERCHE ====================

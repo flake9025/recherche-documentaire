@@ -55,16 +55,26 @@
                     <div class="page-title">
                         <span class="page-eyebrow">Portail documentaire</span>
                         <h1>Bibliotheque de documents</h1>
-                        <p>Centralisez, indexez et retrouvez rapidement vos documents depuis une interface unique.</p>
+                        <p>Centralisez, indexez et retrouvez rapidement vos documents depuis une interface unique, optimisee pour la demonstration comme pour l'administration.</p>
+                        <div class="hero-badges" aria-label="Fonctionnalites principales">
+                            <span class="hero-badge">Recherche multi-moteurs</span>
+                            <span class="hero-badge">OCR et indexation</span>
+                            <span class="hero-badge">FAISS / Qdrant / Lucene</span>
+                        </div>
                     </div>
                 </div>
-                <div class="topbar-actions" style="visibility: hidden;">
-                    <button class="btn btn-ghost">Créer un dossier</button>
-                    <button class="btn">Ajouter un document</button>
+                <div class="topbar-actions">
+                    <a class="btn btn-ghost" href="/swagger-ui/index.html" target="_blank" rel="noopener">Explorer l'API</a>
+                    <button class="btn" type="button" data-switch-tab="index">Ajouter un document</button>
                 </div>
             </header>
 
             <section class="toolbar">
+                <div class="toolbar-copy">
+                    <span class="section-eyebrow">Filtres globaux</span>
+                    <h2>Affinez vos recherches en un coup d'oeil</h2>
+                    <p>Ces filtres sont appliques a la recherche documentaire pour affiner les resultats par categorie, auteur et periode de depot.</p>
+                </div>
                 <div class="toolbar-group">
                     <label class="control">
                         Filtrer par catégorie
@@ -100,6 +110,33 @@
                 </div>
             </section>
 
+            <section class="feature-grid" aria-label="Raccourcis principaux">
+                <article class="feature-card">
+                    <span class="feature-icon">🔎</span>
+                    <div>
+                        <h3>Recherche guidee</h3>
+                        <p>Interrogez le corpus par texte libre, auteur, categorie et periode.</p>
+                    </div>
+                    <button class="feature-link" type="button" data-switch-tab="search">Ouvrir la recherche</button>
+                </article>
+                <article class="feature-card">
+                    <span class="feature-icon">📄</span>
+                    <div>
+                        <h3>Indexation assistee</h3>
+                        <p>Deposez un fichier, enrichissez ses metadonnees et lancez l'indexation.</p>
+                    </div>
+                    <button class="feature-link" type="button" data-switch-tab="index">Indexer un document</button>
+                </article>
+                <article class="feature-card feature-card-accent">
+                    <span class="feature-icon">📊</span>
+                    <div>
+                        <h3>Suivi de la plateforme</h3>
+                        <p>Visualisez rapidement l'etat du store, de l'index et du stockage.</p>
+                    </div>
+                    <button class="feature-link" type="button" data-switch-tab="stats">Voir les stats</button>
+                </article>
+            </section>
+
             <main class="content-grid">
                 <section class="panel tab-panel is-active" id="tab-search" data-tab-panel="search">
                     <div class="tab-header">
@@ -116,36 +153,58 @@
                         <span class="panel-tag">Étape 1</span>
                     </div>
 
-                    <div class="field">
-                        <label for="searchQuery">Votre recherche</label>
-                        <textarea class="search-box" id="searchQuery" rows="4" placeholder="Ex. : facture client, rapport annuel, Alice Martin..."></textarea>
-                        <div class="chip-group" aria-label="Suggestions de recherche">
-                            <button class="chip" type="button" data-query="facture client">Facture client</button>
-                            <button class="chip" type="button" data-query="rapport trimestriel">Rapport trimestriel</button>
-                            <button class="chip" type="button" data-query="Alice Martin">Alice Martin</button>
-                            <button class="chip" type="button" data-query="contrat fournisseur">Contrat fournisseur</button>
-                        </div>
-                    </div>
-
-                    <div class="btn-row">
-                        <button class="btn" id="searchBtn">Lancer la recherche</button>
-                        <button class="btn btn-ghost" id="clearSearchBtn" type="button">Effacer</button>
-                    </div>
-
-                    <div class="loading" id="searchLoading">
-                        <div class="spinner"></div>
-                        <p>Recherche en cours...</p>
-                    </div>
-                    <div class="error" id="searchError"></div>
-                    <div class="result-box" id="searchResult">
-                        <div class="results-header" id="searchResultsHeader" style="display: none;">
-                            <div class="results-header-copy">
-                                <span class="results-count" id="resultsCount"></span>
-                                <span class="results-meta">Affichage des extraits les plus pertinents</span>
+                    <div class="panel-layout">
+                        <div class="panel-main">
+                            <div class="field field-lg">
+                                <label for="searchQuery">Votre recherche</label>
+                                <textarea class="search-box search-textarea" id="searchQuery" rows="4" placeholder="Ex. : facture client, rapport annuel, Alice Martin..."></textarea>
+                                <div class="chip-group" aria-label="Suggestions de recherche">
+                                    <button class="chip" type="button" data-query="facture client">Facture client</button>
+                                    <button class="chip" type="button" data-query="rapport trimestriel">Rapport trimestriel</button>
+                                    <button class="chip" type="button" data-query="Alice Martin">Alice Martin</button>
+                                    <button class="chip" type="button" data-query="contrat fournisseur">Contrat fournisseur</button>
+                                </div>
                             </div>
-                            <div class="results-runtime" id="resultsRuntime"></div>
+
+                            <div class="btn-row">
+                                <button class="btn" id="searchBtn">Lancer la recherche</button>
+                                <button class="btn btn-ghost" id="clearSearchBtn" type="button">Effacer</button>
+                            </div>
+
+                            <div class="loading" id="searchLoading">
+                                <div class="spinner"></div>
+                                <p>Recherche en cours...</p>
+                            </div>
+                            <div class="error" id="searchError"></div>
+                            <div class="result-box" id="searchResult">
+                                <div class="results-header" id="searchResultsHeader" style="display: none;">
+                                    <div class="results-header-copy">
+                                        <span class="results-count" id="resultsCount"></span>
+                                        <span class="results-meta">Affichage des extraits les plus pertinents</span>
+                                    </div>
+                                    <div class="results-runtime" id="resultsRuntime"></div>
+                                </div>
+                                <div id="searchResultContent"></div>
+                            </div>
                         </div>
-                        <div id="searchResultContent"></div>
+                        <aside class="panel-aside">
+                            <article class="aside-card">
+                                <span class="aside-card-title">Bonnes pratiques</span>
+                                <ul class="aside-list">
+                                    <li>Commencez par quelques mots-clés metier ou un identifiant documentaire.</li>
+                                    <li>Ajoutez ensuite les filtres auteur et date pour reduire le bruit.</li>
+                                    <li>Les suggestions rapides permettent de lancer une demo en un clic.</li>
+                                </ul>
+                            </article>
+                            <article class="aside-card aside-card-soft">
+                                <span class="aside-card-title">Ce que vous recherchez ici</span>
+                                <div class="mini-kpis">
+                                    <div class="mini-kpi"><strong>Texte libre</strong><span>contenu OCR, titres, noms de fichiers</span></div>
+                                    <div class="mini-kpi"><strong>Filtres</strong><span>auteur, categorie, dates</span></div>
+                                    <div class="mini-kpi"><strong>Mesures</strong><span>temps, rebuild, moteur actif</span></div>
+                                </div>
+                            </article>
+                        </aside>
                     </div>
                 </section>
 
@@ -167,61 +226,83 @@
                         <strong>Démo :</strong> cette étape est habituellement automatique. Nous l’affichons ici pour montrer le processus d’indexation pendant la démonstration.
                     </div>
 
-                    <div class="field">
-                        <label for="indexFile">Fichier a indexer</label>
-                        <label for="indexFile" class="file-drop" id="fileDrop">
-                            <span class="file-drop-title">Glissez-déposez un fichier ou cliquez pour parcourir</span>
-                            <span class="file-drop-meta">PDF, image ou scan — taille max recommandée 10 Mo</span>
-                        </label>
-                        <input type="file" id="indexFile">
-                        <div class="file-name" id="fileName"></div>
-                    </div>
+                    <div class="panel-layout">
+                        <div class="panel-main">
+                            <div class="field">
+                                <label for="indexFile">Fichier a indexer</label>
+                                <label for="indexFile" class="file-drop" id="fileDrop">
+                                    <span class="file-drop-title">Glissez-déposez un fichier ou cliquez pour parcourir</span>
+                                    <span class="file-drop-meta">PDF, image ou scan — taille max recommandée 10 Mo</span>
+                                </label>
+                                <input type="file" id="indexFile">
+                                <div class="file-name" id="fileName"></div>
+                            </div>
 
-                    <div class="input-grid">
-                        <div class="field">
-                            <label for="documentTitle">Titre du document</label>
-                            <input type="text" class="search-box" id="documentTitle" placeholder="Ex. : Rapport d'activite Q1" />
+                            <div class="input-grid">
+                                <div class="field">
+                                    <label for="documentTitle">Titre du document</label>
+                                    <input type="text" class="search-box" id="documentTitle" placeholder="Ex. : Rapport d'activite Q1" />
+                                </div>
+                                <div class="field">
+                                    <label for="documentAuthor">Auteur du dépôt</label>
+                                    <input type="text" class="search-box" id="documentAuthor" placeholder="Ex. : Alice Martin" />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="documentDate">Date de dépôt</label>
+                                <input type="date" class="search-box" id="documentDate" />
+                            </div>
+
+                            <div class="field">
+                                <label for="indexType">Type de document</label>
+                                <select class="select-box" id="indexType">
+                                    <option value="FACTURE" selected>Facture</option>
+                                    <option value="RAPPORT">Rapport</option>
+                                    <option value="CONTRAT">Contrat</option>
+                                </select>
+                            </div>
+
+                            <div class="field" style="display: none">
+                                <label for="indexOcrType">Moteur OCR PDF</label>
+                                <select class="select-box" id="indexOcrType">
+                                    <option value="pdfbox" selected>PDFBox</option>
+                                    <option value="tika">Tika</option>
+                                </select>
+                            </div>
+
+                            <div class="btn-row">
+                                <button class="btn" id="indexBtn">Indexer le document</button>
+                                <button class="btn btn-ghost" id="resetIndexBtn" type="button">Réinitialiser</button>
+                            </div>
+
+                            <div class="loading" id="indexLoading">
+                                <div class="spinner"></div>
+                                <p>Indexation en cours...</p>
+                            </div>
+                            <div class="error" id="indexError"></div>
+                            <div class="success-message" id="indexSuccess"></div>
+                            <div class="result-box" id="indexResult">
+                                <pre id="indexResultContent"></pre>
+                            </div>
                         </div>
-                        <div class="field">
-                            <label for="documentAuthor">Auteur du dépôt</label>
-                            <input type="text" class="search-box" id="documentAuthor" placeholder="Ex. : Alice Martin" />
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="documentDate">Date de dépôt</label>
-                        <input type="date" class="search-box" id="documentDate" />
-                    </div>
-
-                    <div class="field">
-                        <label for="indexType">Type de document</label>
-                        <select class="select-box" id="indexType">
-                            <option value="FACTURE" selected>Facture</option>
-                            <option value="RAPPORT">Rapport</option>
-                            <option value="CONTRAT">Contrat</option>
-                        </select>
-                    </div>
-
-                    <div class="field" style="display: none">
-                        <label for="indexOcrType">Moteur OCR PDF</label>
-                        <select class="select-box" id="indexOcrType">
-                            <option value="pdfbox" selected>PDFBox</option>
-                            <option value="tika">Tika</option>
-                        </select>
-                    </div>
-
-                    <div class="btn-row">
-                        <button class="btn" id="indexBtn">Indexer le document</button>
-                        <button class="btn btn-ghost" id="resetIndexBtn" type="button">Réinitialiser</button>
-                    </div>
-
-                    <div class="loading" id="indexLoading">
-                        <div class="spinner"></div>
-                        <p>Indexation en cours...</p>
-                    </div>
-                    <div class="error" id="indexError"></div>
-                    <div class="success-message" id="indexSuccess"></div>
-                    <div class="result-box" id="indexResult">
-                        <pre id="indexResultContent"></pre>
+                        <aside class="panel-aside">
+                            <article class="aside-card">
+                                <span class="aside-card-title">Parcours recommande</span>
+                                <ol class="aside-list aside-list-ordered">
+                                    <li>Selectionnez un fichier depuis votre poste.</li>
+                                    <li>Ajoutez un titre metier et l'auteur de depot.</li>
+                                    <li>Choisissez la categorie pour faciliter les filtres futurs.</li>
+                                </ol>
+                            </article>
+                            <article class="aside-card aside-card-soft">
+                                <span class="aside-card-title">Conseils demo</span>
+                                <div class="mini-kpis">
+                                    <div class="mini-kpi"><strong>Titre clair</strong><span>ameliore la recherche et la lecture des resultats</span></div>
+                                    <div class="mini-kpi"><strong>Auteur normalise</strong><span>utile pour l'autocompletion</span></div>
+                                    <div class="mini-kpi"><strong>Date renseignee</strong><span>facilite les campagnes de comparaison</span></div>
+                                </div>
+                            </article>
+                        </aside>
                     </div>
                 </section>
 
@@ -240,24 +321,38 @@
                         <span class="panel-tag">Outils</span>
                     </div>
 
-                    <div class="maintenance-card">
-                        <div class="maintenance-copy">
-                            <h3>Rebuild de l&apos;index auteurs</h3>
-                            <p>Reconstruit l&apos;autocompl&eacute;tion des auteurs &agrave; partir des documents d&eacute;j&agrave; stock&eacute;s.</p>
-                        </div>
-                        <div class="btn-row maintenance-actions">
-                            <button class="btn" id="rebuildAuthorsBtn" type="button">Rebuild index auteurs</button>
-                        </div>
-                    </div>
+                    <div class="panel-layout panel-layout-compact">
+                        <div class="panel-main">
+                            <div class="maintenance-card">
+                                <div class="maintenance-copy">
+                                    <h3>Rebuild de l&apos;index auteurs</h3>
+                                    <p>Reconstruit l&apos;autocompl&eacute;tion des auteurs &agrave; partir des documents d&eacute;j&agrave; stock&eacute;s.</p>
+                                </div>
+                                <div class="btn-row maintenance-actions">
+                                    <button class="btn" id="rebuildAuthorsBtn" type="button">Rebuild index auteurs</button>
+                                </div>
+                            </div>
 
-                    <div class="loading" id="maintenanceLoading">
-                        <div class="spinner"></div>
-                        <p>Rebuild en cours...</p>
-                    </div>
-                    <div class="error" id="maintenanceError"></div>
-                    <div class="success-message" id="maintenanceSuccess"></div>
-                    <div class="result-box" id="maintenanceResult">
-                        <pre id="maintenanceResultContent"></pre>
+                            <div class="loading" id="maintenanceLoading">
+                                <div class="spinner"></div>
+                                <p>Rebuild en cours...</p>
+                            </div>
+                            <div class="error" id="maintenanceError"></div>
+                            <div class="success-message" id="maintenanceSuccess"></div>
+                            <div class="result-box" id="maintenanceResult">
+                                <pre id="maintenanceResultContent"></pre>
+                            </div>
+                        </div>
+                        <aside class="panel-aside">
+                            <article class="aside-card">
+                                <span class="aside-card-title">Quand l'utiliser ?</span>
+                                <ul class="aside-list">
+                                    <li>Apres un import massif de documents.</li>
+                                    <li>Quand les suggestions d'auteurs semblent incompletes.</li>
+                                    <li>Avant une demonstration publique pour repartir sur un index propre.</li>
+                                </ul>
+                            </article>
+                        </aside>
                     </div>
                 </section>
 
@@ -276,7 +371,7 @@
                         <span class="panel-tag">Mesures</span>
                     </div>
 
-                    <div class="btn-row">
+                    <div class="btn-row btn-row-inline">
                         <button class="btn" id="refreshStatsBtn" type="button">Rafraîchir</button>
                     </div>
 
@@ -290,6 +385,15 @@
                     </div>
                 </section>
             </main>
+
+            <footer class="page-footer">
+                <span>POC Recherche Documentaire</span>
+                <div class="page-footer-links">
+                    <a href="/actuator/health" target="_blank" rel="noopener">Santé</a>
+                    <a href="/swagger-ui/index.html" target="_blank" rel="noopener">Swagger</a>
+                    <a href="/h2-console/" target="_blank" rel="noopener">H2 Console</a>
+                </div>
+            </footer>
         </div>
     </div>
 
@@ -298,4 +402,3 @@
     <script src="stats.js"></script>
 </body>
 </html>
-
