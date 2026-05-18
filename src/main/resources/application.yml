@@ -136,6 +136,17 @@ app:
         enabled: false
         # URL du service externe si `faiss-remote` est utilise.
         base-url: http://localhost:8090
+      qdrant:
+        # Active l'appel au serveur Qdrant distant.
+        enabled: false
+        # URL HTTP de l'API Qdrant.
+        base-url: http://localhost:6333
+        # Cle API optionnelle si Qdrant est securise.
+        api-key:
+        # Nom de la collection Qdrant contenant les embeddings documentaires.
+        collection: document-embeddings
+        # Taille des batches d'upsert/replaceAll vers Qdrant.
+        batch-size: 128
     search:
       # Nombre maximal de resultats semantiques retournes.
       max-results: 25

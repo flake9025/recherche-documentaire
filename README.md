@@ -133,9 +133,36 @@ app:
         base-url: http://localhost:8090
 ```
 
-### `qdrant` et `milvus`
+### `qdrant`
 
-Des points d'extension existent deja, mais ces stores ne sont pas encore implementes dans ce repository.
+Store vectoriel distant base sur le serveur officiel Qdrant:
+
+- API REST Qdrant (port `6333` par defaut)
+- collection creee automatiquement au premier `upsert`
+- payload enrichi pour conserver `title`, `author`, `category`, `filename`, `depotDateTime`, `contentText`
+- filtres `category`, `author`, `dateFrom`, `dateTo` alignes sur le comportement du store `hashmap`
+- les filtres texte sont normalises en minuscules cote payload pour reproduire le `equalsIgnoreCase`
+
+Configuration manuelle:
+
+```yaml
+app:
+  embeddings:
+    store:
+      default: qdrant
+      qdrant:
+        enabled: true
+        base-url: http://localhost:6333
+        api-key: ""
+        collection: document-embeddings
+        batch-size: 128
+```
+
+Le moyen le plus simple de le tester est le fichier `docker-compose.qdrant.yml` fourni.
+
+### `milvus`
+
+Un point d'extension existe deja, mais ce store n'est pas encore implemente dans ce repository.
 
 ## Feature flags et configuration
 
@@ -373,6 +400,33 @@ Acces utiles une fois demarre:
 - FAISS stats: `http://localhost:8090/api/faiss/stats`
 - FAISS docs API: `http://localhost:8090/docs`
 
+## Integration Qdrant avec Docker Compose
+
+Le fichier `docker-compose.qdrant.yml` demarre l'application Spring Boot avec le store `qdrant` et un serveur Qdrant officiel:
+
+```bash
+docker compose -f docker-compose.qdrant.yml up --build
+```
+
+Ce qui est lance:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `qdrant` | 6333 | Serveur Qdrant officiel |
+| `app`    | 8080 | Spring Boot en profil `bert` + store `qdrant` |
+
+Arret:
+
+```bash
+docker compose -f docker-compose.qdrant.yml down
+```
+
+Acces utiles une fois demarre:
+
+- UI web: `http://localhost:8080/index.html`
+- Swagger: `http://localhost:8080/swagger-ui/index.html`
+- Qdrant collections: `http://localhost:6333/collections`
+
 ## Stockage S3 / MinIO
 
 Le backend de stockage `s3` permet d'utiliser n'importe quel serveur S3 compatible au lieu du systeme de fichiers local.
@@ -453,7 +507,7 @@ app:
 - mode `hashmap` non scalable pour gros corpus
 - service FAISS entierement en memoire : un redemarrage du conteneur vide l'index (recharger les documents depuis Spring Boot)
 - mode `s3` : les statistiques refletent le cache local, pas le bucket complet
-- `qdrant` et `milvus` encore en placeholders
+- `milvus` encore en placeholder
 
 ## Tests
 
@@ -473,3 +527,24 @@ Execution:
 ```bash
 mvn test
 ```
+
+## CI/CD GitHub et deploiement NAS
+
+Le workflow GitHub Actions `/.github/workflows/build.yml` execute maintenant :
+
+- `mvn verify`
+- un smoke test Docker du mode `lucene`
+- un smoke test Docker Compose du mode `faiss`
+- un smoke test Docker Compose du mode `qdrant`
+- la publication des images GHCR de l'application Spring Boot et du service `faiss-service`
+
+Le deploiement NAS s'appuie sur `deploy/deploy-github-documents.sh`, qui demarre desormais :
+
+- une instance `lucene`
+- une instance `lucene-vector`
+- une instance `bert` + store `faiss-remote`
+- une instance `bert` + store `qdrant`
+- les services de support `faiss` et `qdrant`
+
+Qdrant utilise l'image officielle `qdrant/qdrant:latest`, il n'y a donc pas d'image Qdrant custom a publier dans GHCR.
+
