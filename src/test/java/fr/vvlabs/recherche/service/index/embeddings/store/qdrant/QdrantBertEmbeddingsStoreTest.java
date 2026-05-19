@@ -168,6 +168,56 @@ class QdrantBertEmbeddingsStoreTest {
     }
 
     @Test
+    void findAll_ignoresAdditionalQdrantEnvelopeFields() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        QdrantBertEmbeddingsStore store = newStore(builder, true);
+
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points/scroll"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {
+                          "status": "ok",
+                          "time": 0.002,
+                          "usage": {"cpu": 1},
+                          "result": {
+                            "points": [
+                              {
+                                "id": 99,
+                                "version": 7,
+                                "score": 0.0,
+                                "order_value": 99,
+                                "payload": {
+                                  "documentId": 99,
+                                  "title": "Titre scroll",
+                                  "author": "Auteur scroll",
+                                  "category": "NOTE",
+                                  "filename": "scroll.pdf",
+                                  "depotDateTime": "2025-05-19T08:15:00",
+                                  "contentText": "contenu scroll"
+                                },
+                                "vector": [0.5, 0.7]
+                              }
+                            ],
+                            "next_page_offset": null
+                          }
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        List<BertEmbeddingDocument> results = store.findAll();
+
+        server.verify();
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().documentId()).isEqualTo(99L);
+        assertThat(results.getFirst().title()).isEqualTo("Titre scroll");
+        assertThat(results.getFirst().filename()).isEqualTo("scroll.pdf");
+        assertThat(results.getFirst().embedding()).containsExactly(0.5f, 0.7f);
+    }
+
+    @Test
     void upsert_throwsWhenStoreDisabled() {
         QdrantBertEmbeddingsStore store = newStore(RestClient.builder(), false);
         BertEmbeddingDocument document = new BertEmbeddingDocument(1L, "Titre", "Auteur", "NOTE", "doc.pdf", null, null, new float[]{1.0f});

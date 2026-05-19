@@ -55,15 +55,15 @@
                     <div class="page-title">
                         <span class="page-eyebrow">Portail documentaire</span>
                         <h1>Bibliotheque de documents</h1>
-                        <p>Centralisez, indexez et retrouvez rapidement vos documents depuis une interface unique, optimisee pour la demonstration comme pour l'administration.</p>
-                        <div class="hero-badges" aria-label="Fonctionnalites principales">
+                        <p>Centralisez, indexez et retrouvez rapidement vos documents.</p>
+                        <div class="hero-badges" aria-label="Fonctionnalites principales" style="display:none">
                             <span class="hero-badge">Recherche multi-moteurs</span>
-                            <span class="hero-badge">OCR et indexation</span>
-                            <span class="hero-badge">FAISS / Qdrant / Lucene</span>
+                            <span class="hero-badge">Indexation et OCR</span>
+                            <span class="hero-badge">IA</span>
                         </div>
                     </div>
                 </div>
-                <div class="topbar-actions">
+                <div class="topbar-actions" style="display:none">
                     <a class="btn btn-ghost" href="/swagger-ui/index.html" target="_blank" rel="noopener">Explorer l'API</a>
                     <button class="btn" type="button" data-switch-tab="index">Ajouter un document</button>
                 </div>
@@ -72,8 +72,7 @@
             <section class="toolbar">
                 <div class="toolbar-copy">
                     <span class="section-eyebrow">Filtres globaux</span>
-                    <h2>Affinez vos recherches en un coup d'oeil</h2>
-                    <p>Ces filtres sont appliques a la recherche documentaire pour affiner les resultats par categorie, auteur et periode de depot.</p>
+                    <p>Affinez vos recherches</p>
                 </div>
                 <div class="toolbar-group">
                     <label class="control">
@@ -105,12 +104,12 @@
                         </select>
                     </label>
                 </div>
-                <div class="toolbar-info">
+                <div class="toolbar-info" style="display:none">
                     <span class="info-pill">Affichage des documents indexés</span>
                 </div>
             </section>
 
-            <section class="feature-grid" aria-label="Raccourcis principaux">
+            <section class="feature-grid" aria-label="Raccourcis principaux" style="display:none">>
                 <article class="feature-card">
                     <span class="feature-icon">🔎</span>
                     <div>
@@ -187,7 +186,7 @@
                                 <div id="searchResultContent"></div>
                             </div>
                         </div>
-                        <aside class="panel-aside">
+                        <aside class="panel-aside" style="display:none">
                             <article class="aside-card">
                                 <span class="aside-card-title">Bonnes pratiques</span>
                                 <ul class="aside-list">

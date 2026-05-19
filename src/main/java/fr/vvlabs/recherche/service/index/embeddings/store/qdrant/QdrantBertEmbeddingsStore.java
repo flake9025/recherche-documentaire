@@ -1,6 +1,7 @@
 package fr.vvlabs.recherche.service.index.embeddings.store.qdrant;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingDocument;
 import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsStoreType;
@@ -339,11 +340,13 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantCountResponse(
             QdrantCountResult result
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantCountResult(
             long count
     ) {
@@ -359,11 +362,13 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantSearchResponse(
             List<QdrantSearchPoint> result
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantSearchPoint(
             Object id,
             float score,
@@ -380,11 +385,13 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantScrollResponse(
             QdrantScrollResult result
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantScrollResult(
             List<QdrantSearchPoint> points,
             @JsonProperty("next_page_offset") Object nextPageOffset
