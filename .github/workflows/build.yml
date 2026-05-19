@@ -63,25 +63,20 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Start Lucene app container
+      - name: Start Lucene stack
         if: matrix.scenario == 'lucene'
-        run: |
-          docker run -d \
-            --name recherche-ci-lucene \
-            -p 18080:8080 \
-            -e SPRING_PROFILES_ACTIVE=lucene \
-            poc-recherche-documentaire:ci-lucene
+        run: docker compose -f docker-compose.lucene.yml up -d --build
 
       - name: Smoke test Lucene stack
         if: matrix.scenario == 'lucene'
         run: |
           for i in {1..60}; do
-            if curl -fsS http://localhost:18080/actuator/health; then
+            if curl -fsS http://localhost:8080/actuator/health; then
               exit 0
             fi
             sleep 5
           done
-          docker logs recherche-ci-lucene
+          docker compose -f docker-compose.lucene.yml logs --no-color
           exit 1
 
       - name: Start FAISS stack
@@ -136,14 +131,14 @@ jobs:
         if: failure()
         run: |
           docker ps -a || true
-          docker logs recherche-ci-lucene || true
+          docker compose -f docker-compose.lucene.yml logs --no-color || true
           docker compose logs --no-color || true
           docker compose -f docker-compose.qdrant.yml logs --no-color || true
 
       - name: Cleanup Docker resources
         if: always()
         run: |
-          docker rm -f recherche-ci-lucene || true
+          docker compose -f docker-compose.lucene.yml down -v || true
           docker compose down -v || true
           docker compose -f docker-compose.qdrant.yml down -v || true
 

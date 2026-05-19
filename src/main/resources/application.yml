@@ -12,24 +12,15 @@ spring:
     # Application web Spring MVC classique.
     web-application-type: servlet
   datasource:
-    # Base H2 stockee sur disque pour conserver les donnees entre deux redemarrages.
-    # Pour repartir de zero, supprimer le dossier `storage/database`.
-    url: jdbc:h2:file:./storage/database/poc-recherche
-    driverClassName: org.h2.Driver
-    username: sa
-    password:
-  h2:
-    console:
-      # Console H2 accessible en local sur /h2-console.
-      enabled: true
-      path: /h2-console
-      settings:
-        # Autorise les connexions distantes a la console H2.
-        # A ne pas activer en production.
-        web-allow-others: true
+    # Base PostgreSQL utilisee pour les metadonnees et les snapshots d'index.
+    # Les valeurs par defaut ciblent un Postgres local ou lance via Docker.
+    url: jdbc:postgresql://${APP_DB_HOST:localhost}:${APP_DB_PORT:5433}/${APP_DB_NAME:recherche_documentaire}
+    driver-class-name: org.postgresql.Driver
+    username: ${APP_DB_USERNAME:postgres}
+    password: ${APP_DB_PASSWORD:postgres}
   jpa:
-    # Dialecte SQL H2.
-    database-platform: org.hibernate.dialect.H2Dialect
+    # Dialecte SQL PostgreSQL.
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     # Evite de garder la session Hibernate ouverte pendant le rendu web.
     open-in-view: false
     # `none` = le schema est gere par `schema.sql`.
@@ -90,7 +81,7 @@ app:
     # - bert           : indexation semantique via embeddings
     # - lucene-vector  : indexation vectorielle native Lucene
     default: lucene-vector
-    # Sauvegarde les snapshots d'index en base H2.
+    # Sauvegarde les snapshots d'index en base PostgreSQL.
     # Recommande pour les tests de redemarrage.
     use-database: true
   search:
@@ -128,7 +119,7 @@ app:
       # Valeurs possibles :
       # - hashmap      : simple, en memoire, ideal pour les tests locaux
       # - faiss-remote : service distant FAISS via HTTP
-      # - qdrant       : point d'extension
+      # - qdrant       : serveur Qdrant distant via HTTP REST
       # - milvus       : point d'extension
       default: hashmap
       faiss:

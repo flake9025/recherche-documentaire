@@ -36,11 +36,9 @@ public class EmbeddingEntity {
     @Column(name = "depot_datetime")
     private LocalDateTime depotDateTime;
 
-    @Lob
-    @Column(name = "content_text")
+    @Column(name = "content_text", columnDefinition = "TEXT")
     private String contentText;
 
-    @Lob
-    @Column(name = "embedding_data", nullable = false)
+    @Column(name = "embedding_data", nullable = false, columnDefinition = "BYTEA")
     private byte[] embeddingData;
 }

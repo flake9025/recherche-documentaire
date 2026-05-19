@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Objectif du repo
-- POC Spring Boot de recherche documentaire multi-moteurs (Lucene, BERT, Lucene vector) avec OCR, stockage local/S3, snapshots d'index en H2, et UI locale (`README.md`).
+- POC Spring Boot de recherche documentaire multi-moteurs (Lucene, BERT, Lucene vector) avec OCR, stockage local/S3, snapshots d'index en PostgreSQL, et UI locale (`README.md`).
 - Front door API dans `src/main/java/fr/vvlabs/recherche/web/` (`IndexController`, `SearchController`, `DocumentController`, `BulkIndexController`, `AutocompleteController`, `StatsController`).
 
 ## Architecture a connaitre en premier
@@ -52,6 +52,7 @@
 - Ne pas supposer que moteur d'indexation == moteur de recherche: les deux sont decouples par config.
 - En mode `faiss-remote`, activer **a la fois** `app.embeddings.store.default=faiss-remote` et `app.embeddings.store.faiss.enabled=true`.
 - `storage/` et `lucene-suggest/` contiennent de l'etat local; les supprimer reset les donnees de demo.
+
 
 
 

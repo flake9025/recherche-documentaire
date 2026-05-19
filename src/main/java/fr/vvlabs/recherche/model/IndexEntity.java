@@ -27,8 +27,7 @@ public class IndexEntity {
     @ToString.Include
     private String indexName; // e.g., "main_index"
 
-    @Lob
-    @Column(columnDefinition = "LONGBLOB")
+    @Column(name = "index_data", columnDefinition = "BYTEA")
     private byte[] indexData; // Serialized Lucene index
 
     @Column

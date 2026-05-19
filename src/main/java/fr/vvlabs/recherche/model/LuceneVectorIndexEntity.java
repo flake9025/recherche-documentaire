@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -33,8 +32,7 @@ public class LuceneVectorIndexEntity {
     @ToString.Include
     private String indexName;
 
-    @Lob
-    @Column(columnDefinition = "LONGBLOB")
+    @Column(name = "index_data", columnDefinition = "BYTEA")
     private byte[] indexData;
 
     @Column

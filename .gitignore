@@ -2,6 +2,7 @@
 /target
 /storage/documents
 /storage/database
+/storage/s3-cache
 /lucene-suggest
 /deploy/
 /monitoring/

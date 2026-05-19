@@ -17,7 +17,7 @@ public class POCApplication {
 
         System.out.println("Webapp\t\t\t\t: http://localhost:8080/index.html");
         System.out.println("Swagger\t\t\t\t: http://localhost:8080/swagger-ui/index.html");
-        System.out.println("H2 Console\t\t\t: http://localhost:8080/h2-console/ and DB URL : "+ jdbcUrl);
+        System.out.println("PostgreSQL\t\t\t: " + jdbcUrl);
         System.out.println("Index with\t\t: "+ indexer);
         System.out.println("Search with\t\t: "+ search);
         System.out.println("Embeddings store\t: "+ embeddingsStore);

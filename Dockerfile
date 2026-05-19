@@ -28,8 +28,8 @@ RUN apt-get update \
     && curl -fsSL https://github.com/tesseract-ocr/tessdata/raw/4.00/fra.traineddata -o /usr/share/tessdata/fra.traineddata \
     && rm -rf /var/lib/apt/lists/*
 
-# Repertoires utilises par H2, le stockage documentaire et Lucene.
-RUN mkdir -p /app/storage/documents /app/storage/database /app/lucene-suggest
+# Repertoires utilises par le stockage documentaire, le cache S3 local et Lucene.
+RUN mkdir -p /app/storage/documents /app/storage/s3-cache /app/lucene-suggest
 
 # Couche 1 : dependances externes (stables, rarement retransferees).
 COPY --from=extract /workspace/extracted/dependencies/ ./

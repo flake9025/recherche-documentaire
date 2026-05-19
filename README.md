@@ -19,7 +19,7 @@ Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussi
 ## Fonctionnalites
 
 - upload et stockage local des documents
-- metadonnees documentaires en base H2
+- metadonnees documentaires en base PostgreSQL
 - OCR via PDFBox, Tika et Tesseract selon la configuration
 - mode d'indexation `lucene`
 - mode d'indexation `bert`
@@ -50,7 +50,7 @@ Le projet separe maintenant explicitement:
 - `app.indexer.default`
 - `app.search.default`
 
-Cela permet de choisir distinctement le moteur utilise pour l'indexation et celui utilise pour la recherche, meme si dans la configuration courante les deux pointent vers `bert`.
+Cela permet de choisir distinctement le moteur utilise pour l'indexation et celui utilise pour la recherche, meme si dans la configuration courante les deux pointent vers `lucene-vector`.
 
 Les moteurs a base d'embeddings (`bert` et `lucene-vector`) indexent desormais
 le meme contenu textuel que Lucene:
@@ -246,9 +246,9 @@ Important:
 
 ## Donnees persistees
 
-- `storage/` contient la base locale et les documents
+- `storage/` contient les documents et les caches locaux de l'application
 - `lucene-suggest/` contient l'index d'autocompletion
-- H2 contient des snapshots chiffres separes par moteur:
+- PostgreSQL contient les metadonnees et les snapshots chiffres separes par moteur:
 - `lucene_index` pour `lucene`
 - `bert_embeddings_index` pour `bert`
 - `lucene_vector_index` pour `lucene-vector`
@@ -260,7 +260,7 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 - Java 25
 - Spring Boot 4
 - Maven
-- H2
+- PostgreSQL
 - Apache Lucene
 - Apache PDFBox
 - Apache Tika
@@ -274,10 +274,21 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 
 ```bash
 mvn install
+docker run --name recherche-postgres -e POSTGRES_DB=recherche_documentaire -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17-alpine
 java -jar ./target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
 ```
 
 Le fichier `application.yml` est le mode POC par defaut sous Windows.
+La connexion PostgreSQL locale cible par defaut :
+
+```text
+jdbc:postgresql://localhost:5432/recherche_documentaire
+username=postgres
+password=postgres
+```
+
+Vous pouvez surcharger ces valeurs via `APP_DB_HOST`, `APP_DB_PORT`, `APP_DB_NAME`, `APP_DB_USERNAME`, `APP_DB_PASSWORD`.
+
 Si Tesseract est installe classiquement, verifier:
 
 ```yaml
@@ -295,18 +306,44 @@ Acces utiles en mode local:
 
 - UI web: `http://localhost:8080/index.html`
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
-- H2 console: `http://localhost:8080/h2-console/`
 - Health: `http://localhost:8080/actuator/health`
 - Prometheus: `http://localhost:8080/actuator/prometheus`
+
+## Integration Lucene + PostgreSQL avec Docker Compose
+
+Le fichier `docker-compose.lucene.yml` demarre l'application Spring Boot en profil `lucene` avec PostgreSQL:
+
+```bash
+docker compose -f docker-compose.lucene.yml up --build
+```
+
+Ce qui est lance:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `postgres` | 5432 | Base PostgreSQL du POC |
+| `app`      | 8080 | Spring Boot en profil `lucene` |
+
+Arret:
+
+```bash
+docker compose -f docker-compose.lucene.yml down
+```
 
 ## Docker
 
 ### Image Spring Boot seule
 
+Ces exemples supposent qu'un PostgreSQL est deja accessible.
+Le plus simple reste d'utiliser `docker-compose.lucene.yml`; sinon, injecter explicitement l'URL JDBC adaptee a votre environnement Docker.
+
 ```bash
 docker build -t poc-recherche-documentaire .
 docker run --rm -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=lucene-vector \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/recherche_documentaire \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=postgres \
   -v ${PWD}/storage:/app/storage \
   -v ${PWD}/lucene-suggest:/app/lucene-suggest \
   poc-recherche-documentaire
@@ -318,6 +355,9 @@ de retelecharger PyTorch (~600 MB) a chaque redemarrage :
 ```bash
 docker run --rm -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=bert \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/recherche_documentaire \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=postgres \
   -v ${PWD}/storage:/app/storage \
   -v ${PWD}/lucene-suggest:/app/lucene-suggest \
   -v djl-cache:/root/.djl.ai \
@@ -329,6 +369,9 @@ Limiter la memoire sur un NAS via `JAVA_OPTS` (par defaut `MaxRAMPercentage=50`)
 ```bash
 docker run --rm -p 8080:8080 \
   -e SPRING_PROFILES_ACTIVE=lucene \
+  -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/recherche_documentaire \
+  -e SPRING_DATASOURCE_USERNAME=postgres \
+  -e SPRING_DATASOURCE_PASSWORD=postgres \
   -e JAVA_OPTS="-Xmx512m" \
   -v ${PWD}/storage:/app/storage \
   poc-recherche-documentaire
@@ -370,7 +413,7 @@ architecture si le cache `/root/.djl.ai` est vide.
 
 ## Integration FAISS avec Docker Compose
 
-Le fichier `docker-compose.yml` demarre les deux services en une commande:
+Le fichier `docker-compose.yml` demarre les services FAISS, PostgreSQL et l'application en une commande:
 
 ```bash
 docker compose up --build
@@ -380,10 +423,11 @@ Ce qui est lance:
 
 | Service | Port | Description |
 |---------|------|-------------|
+| `postgres` | 5432 | Base PostgreSQL du POC |
 | `faiss` | 8090 | Service Python FAISS (`faiss-service/`) |
 | `app`   | 8080 | Spring Boot en profil `bert` + store `faiss-remote` |
 
-L'application attend que le healthcheck FAISS soit vert avant de demarrer (`depends_on: condition: service_healthy`).
+L'application attend que PostgreSQL et FAISS soient prets avant de demarrer (`depends_on: condition: service_healthy`).
 
 Un volume nomme `djl-cache` persiste le modele `sentence-transformers/all-MiniLM-L6-v2` entre les redemarrages pour eviter un re-telechargement.
 
@@ -402,7 +446,7 @@ Acces utiles une fois demarre:
 
 ## Integration Qdrant avec Docker Compose
 
-Le fichier `docker-compose.qdrant.yml` demarre l'application Spring Boot avec le store `qdrant` et un serveur Qdrant officiel:
+Le fichier `docker-compose.qdrant.yml` demarre l'application Spring Boot avec le store `qdrant`, PostgreSQL et un serveur Qdrant officiel:
 
 ```bash
 docker compose -f docker-compose.qdrant.yml up --build
@@ -412,6 +456,7 @@ Ce qui est lance:
 
 | Service | Port | Description |
 |---------|------|-------------|
+| `postgres` | 5432 | Base PostgreSQL du POC |
 | `qdrant` | 6333 | Serveur Qdrant officiel |
 | `app`    | 8080 | Spring Boot en profil `bert` + store `qdrant` |
 
