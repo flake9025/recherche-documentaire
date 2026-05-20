@@ -1,13 +1,17 @@
 # Build du jar Spring Boot dans une image Maven avec JDK 25.
 FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /workspace
+ARG MAVEN_PROFILES=all-engines
 
-# On copie uniquement le strict necessaire au build.
-COPY pom.xml .
-COPY src ./src
+# On copie le workspace multi-modules necessaire au build de la webapp Spring Boot.
+COPY . .
 
 # Le packaging du conteneur ne rejoue pas les tests, deja executes en CI.
-RUN mvn -B -DskipTests package
+RUN if [ -n "$MAVEN_PROFILES" ]; then \
+      mvn -B -pl recherche-documentaire-webapp-demo -am -P"$MAVEN_PROFILES" -DskipTests package; \
+    else \
+      mvn -B -pl recherche-documentaire-webapp-demo -am -DskipTests package; \
+    fi
 
 # Extraction des couches du jar en etape intermediaire.
 # Les dependances (rarement modifiees) et le code applicatif
@@ -15,7 +19,7 @@ RUN mvn -B -DskipTests package
 # est retransferee lors d'un rebuild apres une simple modification du code.
 FROM eclipse-temurin:25-jre AS extract
 WORKDIR /workspace
-COPY --from=build /workspace/target/poc-recherche-documentaire-*.jar app.jar
+COPY --from=build /workspace/recherche-documentaire-webapp-demo/target/poc-recherche-documentaire-*.jar app.jar
 RUN java -Djarmode=layertools -jar app.jar extract --destination extracted
 
 # Image d'execution minimale avec un JRE 25.

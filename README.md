@@ -18,7 +18,7 @@ Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussi
 
 ## Fonctionnalites
 
-- upload et stockage local des documents
+- upload et stockage local ou S3 des documents
 - metadonnees documentaires en base PostgreSQL
 - OCR via PDFBox, Tika et Tesseract selon la configuration
 - mode d'indexation `lucene`
@@ -38,6 +38,22 @@ Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussi
 Les documents sont stockes via `StorageService`.
 Les metadonnees sont persistees via `DocumentService`.
 Le texte est extrait via `OCRServiceFactory`.
+
+Les implementations de parser/OCR sont elles aussi isolees dans des modules Maven
+dedies, tout en restant embarquees ensemble dans la webapp pour eviter les
+combinaisons de profils:
+
+- `recherche-documentaire-parser-tesseract`
+- `recherche-documentaire-parser-pdfbox`
+- `recherche-documentaire-parser-tika`
+
+Les implementations de stockage sont isolees dans des modules Maven dedies,
+mais restent embarquees ensemble dans la webapp pour eviter de croiser des
+combinaisons de profils `engine` et `storage`:
+
+- `recherche-documentaire-storage-fs`
+- `recherche-documentaire-storage-s3`
+- `recherche-documentaire-storage-netapp`
 
 Par defaut, `application.yml` cible un poste Windows local avec une installation
 Tesseract classique. Les profils `lucene`, `lucene-vector` et `bert`
@@ -162,7 +178,29 @@ Le moyen le plus simple de le tester est le fichier `docker-compose.qdrant.yml` 
 
 ### `milvus`
 
-Un point d'extension existe deja, mais ce store n'est pas encore implemente dans ce repository.
+Store vectoriel distant base sur l'API REST v2 de Milvus:
+
+- creation automatique de la collection au premier `upsert`
+- collection creee avec `documentId` comme cle primaire, champ vectoriel `embedding` et champs dynamiques actives
+- filtres `category`, `author`, `dateFrom`, `dateTo` traduits en expression Milvus
+- `replaceAll` effectue un drop/recreate puis un rechargement par batchs
+
+Configuration manuelle:
+
+```yaml
+app:
+  embeddings:
+    store:
+      default: milvus
+      milvus:
+        enabled: true
+        base-url: http://localhost:19530
+        token: ""
+        collection: document_embeddings
+        batch-size: 128
+```
+
+Le profil Maven selectif associe est `store-milvus`.
 
 ## Feature flags et configuration
 
@@ -222,8 +260,9 @@ app:
 - `app.search.vector.candidate-multiplier`: multiplicateur du nombre de candidats KNN explores par `lucene-vector`
 - `app.embeddings.store.default`: implementation du store BERT
 - `app.embeddings.store.faiss.enabled`: active le client FAISS distant
-- `app.storage.default`: backend de stockage (`fs` ou `s3`)
+- `app.storage.default`: backend de stockage (`fs`, `s3` ou `netapp`)
 - `app.storage.s3.enabled`: active le bean S3 (necessite un serveur S3 ou MinIO)
+- `app.storage.netapp.enabled`: active le bean NetApp (necessite un partage deja monte)
 - `app.task.ocr.enabled`: active la tache OCR asynchrone
 - `app.search.wildcard`: ajoute un wildcard sur certaines requetes non Lucene
 - `app.search.distance.enabled`: active l'extension fuzzy configuree pour les requetes non Lucene
@@ -270,12 +309,44 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 - Python 3.11 + FastAPI + FAISS (service `faiss-service/`)
 - AWS SDK v2 S3 (compatible MinIO)
 
+## Modules Maven et packaging selectif
+
+La webapp runnable est le module `recherche-documentaire-webapp-demo`.
+Le projet accepte maintenant des profils Maven pour n'embarquer dans le jar Spring Boot que les engines utiles au scenario cible.
+
+Profils disponibles :
+
+| Profil Maven | Contenu embarque | Cas d'usage |
+|---|---|---|
+| `all-engines` | tous les modules d'engine et de store | image generique par defaut |
+| `engine-lucene` | moteur `lucene` uniquement | image la plus legere pour recherche texte |
+| `engine-lucene-vector` | moteur `lucene-vector` uniquement | image vectorielle Lucene native |
+| `store-qdrant` | store BERT `qdrant` uniquement | profil `bert` avec backend Qdrant |
+| `store-faiss` | store BERT `faiss-remote` uniquement | profil `bert` avec backend FAISS |
+| `store-milvus` | store BERT `milvus` uniquement | profil `bert` avec backend Milvus |
+
+Exemples Maven :
+
+```bash
+mvn -B -pl recherche-documentaire-webapp-demo -am -Pengine-lucene -DskipTests package
+mvn -B -pl recherche-documentaire-webapp-demo -am -Pengine-lucene-vector -DskipTests package
+mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-qdrant -DskipTests package
+mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-faiss -DskipTests package
+mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-milvus -DskipTests package
+```
+
+Important :
+
+- les profils Maven pilotent ce qui est **embarque au build**
+- `SPRING_PROFILES_ACTIVE` pilote toujours le comportement **au runtime**
+- le profil runtime choisi doit rester coherent avec les modules packages
+
 ## Demarrage local
 
 ```bash
 mvn install
 docker run --name recherche-postgres -e POSTGRES_DB=recherche_documentaire -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17-alpine
-java -jar ./target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
+java -jar ./recherche-documentaire-webapp-demo/target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
 ```
 
 Le fichier `application.yml` est le mode POC par defaut sous Windows.
@@ -324,6 +395,8 @@ Ce qui est lance:
 | `postgres` | 5432 | Base PostgreSQL du POC |
 | `app`      | 8080 | Spring Boot en profil `lucene` |
 
+Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=engine-lucene` pour n'embarquer que le moteur Lucene dans l'image applicative.
+
 Arret:
 
 ```bash
@@ -348,6 +421,18 @@ docker run --rm -p 8080:8080 \
   -v ${PWD}/lucene-suggest:/app/lucene-suggest \
   poc-recherche-documentaire
 ```
+
+Pour construire une image plus legere, vous pouvez cibler explicitement un profil Maven :
+
+```bash
+docker build --build-arg MAVEN_PROFILES=engine-lucene -t poc-recherche-documentaire:lucene .
+docker build --build-arg MAVEN_PROFILES=engine-lucene-vector -t poc-recherche-documentaire:lucene-vector .
+docker build --build-arg MAVEN_PROFILES=store-qdrant -t poc-recherche-documentaire:bert-qdrant .
+docker build --build-arg MAVEN_PROFILES=store-faiss -t poc-recherche-documentaire:bert-faiss .
+docker build --build-arg MAVEN_PROFILES=store-milvus -t poc-recherche-documentaire:bert-milvus .
+```
+
+Le `Dockerfile` garde `all-engines` par defaut pour conserver une image generique si aucun `build-arg` n'est passe.
 
 Pour le mode `bert` ou `lucene-vector`, monter aussi le cache DJL pour eviter
 de retelecharger PyTorch (~600 MB) a chaque redemarrage :
@@ -388,6 +473,7 @@ Sous Linux/Docker, lancer explicitement un des profils metier:
 - `lucene` — moteur le plus leger, recommande sur NAS
 - `lucene-vector`
 - `bert` — necessite ~600 MB de natifs PyTorch au premier demarrage
+- `milvus` — profil `bert` preconfigure avec le store Milvus
 
 Chacun surcharge `app.parser.ocr.tesseract.dataPath` avec le chemin Linux adapte.
 
@@ -427,6 +513,8 @@ Ce qui est lance:
 | `faiss` | 8090 | Service Python FAISS (`faiss-service/`) |
 | `app`   | 8080 | Spring Boot en profil `bert` + store `faiss-remote` |
 
+Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-faiss` pour ne garder que le store Java utile a ce scenario.
+
 L'application attend que PostgreSQL et FAISS soient prets avant de demarrer (`depends_on: condition: service_healthy`).
 
 Un volume nomme `djl-cache` persiste le modele `sentence-transformers/all-MiniLM-L6-v2` entre les redemarrages pour eviter un re-telechargement.
@@ -460,6 +548,8 @@ Ce qui est lance:
 | `qdrant` | 6333 | Serveur Qdrant officiel |
 | `app`    | 8080 | Spring Boot en profil `bert` + store `qdrant` |
 
+Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-qdrant` pour ne garder que le store Java utile a ce scenario.
+
 Arret:
 
 ```bash
@@ -471,6 +561,39 @@ Acces utiles une fois demarre:
 - UI web: `http://localhost:8080/index.html`
 - Swagger: `http://localhost:8080/swagger-ui/index.html`
 - Qdrant collections: `http://localhost:6333/collections`
+
+## Integration Milvus avec Docker Compose
+
+Le fichier `docker-compose.milvus.yml` demarre l'application Spring Boot avec le profil `milvus`, PostgreSQL, un Milvus standalone et ses dependances officielles `etcd` et `minio`:
+
+```bash
+docker compose -f docker-compose.milvus.yml up --build
+```
+
+Ce qui est lance:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `postgres` | 5432 | Base PostgreSQL du POC |
+| `etcd` | 2379 | Metadonnees internes Milvus |
+| `minio` | 9000 / 9001 | Stockage objet interne Milvus |
+| `milvus` | 19530 / 9091 | Serveur Milvus standalone |
+| `app` | 8080 | Spring Boot en profil `milvus` + store `milvus` |
+
+Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-milvus` pour ne garder que le store Java utile a ce scenario.
+
+Arret:
+
+```bash
+docker compose -f docker-compose.milvus.yml down
+```
+
+Acces utiles une fois demarre:
+
+- UI web: `http://localhost:8080/index.html`
+- Swagger: `http://localhost:8080/swagger-ui/index.html`
+- Milvus health: `http://localhost:9091/healthz`
+- MinIO console: `http://localhost:9001`
 
 ## Stockage S3 / MinIO
 
@@ -544,6 +667,33 @@ app:
 - les statistiques (`AppStatsService`) refletent uniquement le cache local, pas le bucket complet
 - `moveFile` effectue un copy + delete sur S3 puis un move local du cache
 
+## Stockage NetApp (partage monte)
+
+Le backend `netapp` cible un partage NetApp deja monte sur l'hote ou dans le conteneur
+(NFS, SMB ou CIFS). Il n'utilise pas d'API NetApp proprietaire: il s'appuie sur un
+repertoire monte et reste donc compatible avec les composants du POC qui manipulent
+des `Path` locaux.
+
+### Configuration
+
+```yaml
+app:
+  storage:
+    default: netapp
+    netapp:
+      enabled: true
+      path: /mnt/netapp/documents
+      require-existing-path: true
+      auto-create-directories: true
+```
+
+### Points d'attention
+
+- `require-existing-path: true` evite de creer par erreur un dossier local si le partage n'est pas monte
+- `auto-create-directories: true` cree le sous-repertoire cible seulement si le point de montage existe deja
+- `moveFile` et `deleteFile` restent des operations de systeme de fichiers classiques sur le partage monte
+- ce mode est bien adapte a un NAS expose en montage reseau, contrairement au mode `s3` qui passe par une API objet
+
 ## Limites actuelles
 
 - POC oriente demonstration
@@ -552,7 +702,7 @@ app:
 - mode `hashmap` non scalable pour gros corpus
 - service FAISS entierement en memoire : un redemarrage du conteneur vide l'index (recharger les documents depuis Spring Boot)
 - mode `s3` : les statistiques refletent le cache local, pas le bucket complet
-- `milvus` encore en placeholder
+- mode `netapp` : la disponibilite depend du montage reseau fourni par l'hote ou l'orchestrateur
 
 ## Tests
 
@@ -581,6 +731,7 @@ Le workflow GitHub Actions `/.github/workflows/build.yml` execute maintenant :
 - un smoke test Docker du mode `lucene`
 - un smoke test Docker Compose du mode `faiss`
 - un smoke test Docker Compose du mode `qdrant`
+- un smoke test Docker Compose du mode `milvus`
 - la publication des images GHCR de l'application Spring Boot et du service `faiss-service`
 
 Le deploiement NAS s'appuie sur `deploy/deploy-github-documents.sh`, qui demarre desormais :

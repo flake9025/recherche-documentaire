@@ -1,0 +1,230 @@
+# Configuration principale du POC.
+# Ce fichier est volontairement commente pour faciliter les essais locaux
+# et les changements de moteur par des testeurs externes.
+#
+# Regle pratique :
+# - commencer avec les valeurs par defaut de ce fichier
+# - ne changer qu'un bloc a la fois
+# - preferer `hashmap` + `pdfbox` pour les tests simples en local
+
+spring:
+  main:
+    # Application web Spring MVC classique.
+    web-application-type: servlet
+  datasource:
+    # Base PostgreSQL utilisee pour les metadonnees et les snapshots d'index.
+    # Les valeurs par defaut ciblent un Postgres local ou lance via Docker.
+    url: jdbc:postgresql://${APP_DB_HOST:localhost}:${APP_DB_PORT:5433}/${APP_DB_NAME:recherche_documentaire}
+    driver-class-name: org.postgresql.Driver
+    username: ${APP_DB_USERNAME:postgres}
+    password: ${APP_DB_PASSWORD:postgres}
+  jpa:
+    # Dialecte SQL PostgreSQL.
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    # Evite de garder la session Hibernate ouverte pendant le rendu web.
+    open-in-view: false
+    # `none` = le schema est gere par `schema.sql`.
+    # Ne pas passer a `create` ou `update` sans le vouloir, sinon les tests
+    # peuvent produire un schema different selon l'environnement.
+    hibernate.ddl-auto: none
+  servlet:
+    encoding:
+      # Force UTF-8 sur toutes les requetes (multipart inclus) et les reponses.
+      # Sans ce reglage, les champs texte des formulaires multipart sont lus
+      # en ISO-8859-1 par defaut, ce qui corrompt les accents.
+      charset: UTF-8
+      force: true
+    multipart:
+      # Upload de fichiers pour l'interface web et l'API.
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+  # Execute `schema.sql` au demarrage.
+  sql.init.mode: always
+  # Active les virtual threads Java quand disponibles.
+  threads.virtual.enabled: true
+
+logging:
+  level:
+    # Niveau global des logs applicatifs.
+    fr.vvlabs.recherche: INFO
+    # Monter a DEBUG si vous voulez comprendre l'extraction de texte.
+    fr.vvlabs.recherche.service.parser: INFO
+    # Monter a DEBUG pour analyser les requetes et scores de recherche.
+    fr.vvlabs.recherche.service.search: INFO
+    # DEBUG utile pendant les tests API locaux.
+    fr.vvlabs.recherche.web: DEBUG
+
+management:
+  # Endpoints techniques Spring Boot Actuator.
+  endpoints:
+    web:
+      exposure:
+        # Endpoints exposes sur HTTP.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        # Active des indicateurs de type liveness/readiness.
+        enabled: true
+  prometheus:
+    metrics:
+      export:
+        # Endpoint des metrics au format Prometheus.
+        enabled: true
+
+app:
+  indexer:
+    # Moteur d'indexation principal.
+    # Valeurs possibles :
+    # - lucene         : indexation texte classique
+    # - bert           : indexation semantique via embeddings
+    # - lucene-vector  : indexation vectorielle native Lucene
+    default: lucene-vector
+    # Sauvegarde les snapshots d'index en base PostgreSQL.
+    # Recommande pour les tests de redemarrage.
+    use-database: true
+  search:
+    # Moteur de recherche utilise par defaut.
+    # Il peut etre different du moteur d'indexation pour tester plusieurs combinaisons.
+    default: lucene-vector
+    # Ajoute un wildcard sur certaines requetes non Lucene.
+    # A laisser a `false` pour des tests de base plus predictibles.
+    wildcard: false
+    # Reglages specifiques au moteur `lucene-vector`.
+    vector:
+      # Nombre maximal de resultats retournes.
+      max-results: 25
+      # Plus la valeur est elevee, plus la recherche explore de candidats KNN.
+      # Augmenter peut ameliorer la pertinence mais degrade les performances.
+      candidate-multiplier: 4
+      # Score minimal pour considerer un voisin vectoriel comme pertinent.
+      # Une valeur trop haute elimine facilement des documents pourtant proches
+      # sur des requetes courtes ou des corpus heterogenes.
+      min-score: 0.55
+      # Longueur minimale de requete utile avant de lancer un KNN sans filtre.
+      min-query-length: 3
+    # Recherche approximative sur les requetes textuelles.
+    distance:
+      # `true` = active un mode fuzzy sur certains moteurs textuels.
+      enabled: false
+      # Distance de Levenshtein appliquee quand le fuzzy est actif.
+      levenshtein: ~2
+  embeddings:
+    # Modele Hugging Face utilise pour produire les embeddings.
+    # Changer ce modele peut modifier les resultats et le temps de chargement.
+    model-id: sentence-transformers/all-MiniLM-L6-v2
+    store:
+      # Backend de stockage des embeddings.
+      # Valeurs possibles :
+      # - hashmap      : simple, en memoire, ideal pour les tests locaux
+      # - faiss-remote : service distant FAISS via HTTP
+      # - qdrant       : serveur Qdrant distant via HTTP REST
+      # - milvus       : serveur Milvus via API REST v2
+      default: hashmap
+      faiss:
+        # Active l'appel au service FAISS distant.
+        enabled: false
+        # URL du service externe si `faiss-remote` est utilise.
+        base-url: http://localhost:8090
+      qdrant:
+        # Active l'appel au serveur Qdrant distant.
+        enabled: false
+        # URL HTTP de l'API Qdrant.
+        base-url: http://localhost:6333
+        # Cle API optionnelle si Qdrant est securise.
+        api-key:
+        # Nom de la collection Qdrant contenant les embeddings documentaires.
+        collection: document-embeddings
+        # Taille des batches d'upsert/replaceAll vers Qdrant.
+        batch-size: 128
+      milvus:
+        # Active l'appel au serveur Milvus distant.
+        enabled: false
+        # URL HTTP de l'API REST v2 Milvus.
+        base-url: http://localhost:19530
+        # Token optionnel (souvent `utilisateur:motdepasse`) envoye en Bearer.
+        token:
+        # Nom de la collection Milvus contenant les embeddings documentaires.
+        collection: document_embeddings
+        # Taille des batches d'upsert/replaceAll vers Milvus.
+        batch-size: 128
+    search:
+      # Nombre maximal de resultats semantiques retournes.
+      max-results: 25
+      # Score minimum pour conserver un resultat semantique.
+      # Le score final melange semantique et lexical; garder 0.35 exclut vite
+      # des correspondances utiles quand l'embedding est moyen mais le texte matche.
+      min-score: 0.10
+      # Poids du score semantique dans le score final.
+      semantic-weight: 0.75
+      # Poids du score lexical dans le score final.
+      lexical-weight: 0.25
+      # 0 = pas de limite supplementaire sur les candidats.
+      candidate-limit: 0
+  parser.ocr:
+    # Active l'extraction de texte.
+    # A laisser a `true` pour une demo complete.
+    enabled: true
+    # Moteur principal de parsing PDF.
+    # Valeurs possibles : `pdfbox` ou `tika`.
+    # `pdfbox` est le choix le plus simple pour commencer.
+    default: pdfbox
+    # Parametres utilises si Tesseract entre en jeu.
+    tesseract:
+      # Resolution de rendu des pages PDF avant OCR.
+      pdfDpi: 70
+      # Chemin des donnees de langue Tesseract.
+      # Par defaut, le POC cible un poste Windows local.
+      dataPath: C:/Program Files/Tesseract-OCR/tessdata
+      # Langue principale de l'OCR.
+      language: fra
+      # Mode de segmentation de page Tesseract.
+      psm: 3
+      # Mode moteur OCR Tesseract.
+      oem: 1
+  storage:
+    # Backend de stockage des documents sources.
+    # Valeurs disponibles : `fs` (systeme de fichiers), `s3` (S3/MinIO)
+    # ou `netapp` (partage monte NFS/SMB/CIFS).
+    default: fs
+    # Repertoire local de stockage des documents importes (mode `fs`).
+    path: ./storage/documents
+    s3:
+      # Active le bean S3 (necessite un serveur S3 ou MinIO).
+      enabled: false
+      # Endpoint S3 / MinIO (laisser vide pour AWS S3 natif).
+      endpoint: http://localhost:9000
+      region: us-east-1
+      access-key: minioadmin
+      secret-key: minioadmin
+      # Nom du bucket cible.
+      bucket: documents
+      # Cache local des objets S3 pour compatibilite avec le reste du POC.
+      cache-path: ./storage/s3-cache
+      # Cree le bucket au demarrage s'il n'existe pas (dev/test uniquement).
+      auto-create-bucket: true
+    netapp:
+      # Active le bean NetApp base sur un repertoire monte par l'OS.
+      enabled: false
+      # Repertoire cible sur le partage monte NetApp.
+      path: ./storage/netapp
+      # Evite d'ecrire par erreur en local si le montage n'est pas present.
+      require-existing-path: true
+      # Cree le sous-repertoire cible seulement si le montage existe deja.
+      auto-create-directories: true
+  cipher:
+    # Active le chiffrement de certaines donnees persistees.
+    # Pour un POC public, cette cle ne doit pas etre consideree comme secrete.
+    enabled: true
+    # Cle AES encodee en Base64.
+    # Pour des tests isoles, vous pouvez la remplacer par une nouvelle cle.
+    key: zHRtFj9XxeREUhD+rqh5oI9PF4ZTN6r3Ua4ouUBq3yM=
+  task:
+    ocr:
+      # Tache OCR asynchrone periodique.
+      # Desactivee par defaut pour garder un comportement simple en local.
+      enabled: false
+      # Delai entre deux executions, en millisecondes.
+      # Exemple : 300000 = 5 minutes.
+      delay: 5000

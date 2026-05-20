@@ -1,5 +1,6 @@
 /.idea
 /target
+target/
 /storage/documents
 /storage/database
 /storage/s3-cache

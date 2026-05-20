@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fr.vvlabs</groupId>
+        <artifactId>poc-recherche-documentaire</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>recherche-documentaire-webapp-demo</artifactId>
+    <name>Recherche Documentaire - Webapp Demo</name>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-storage-fs</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-storage-s3</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-storage-netapp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-parser-tesseract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-parser-pdfbox</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>fr.vvlabs</groupId>
+            <artifactId>recherche-documentaire-parser-tika</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>poc-recherche-documentaire-${project.version}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>fr.vvlabs.recherche.POCApplication</mainClass>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                    <layers>
+                        <enabled>true</enabled>
+                    </layers>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>all-engines</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-lucene</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-qdrant</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-faiss</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-milvus</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-lucene-vector</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>engine-lucene</id>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-lucene</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>engine-lucene-vector</id>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-lucene-vector</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>store-qdrant</id>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-qdrant</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>store-faiss</id>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-faiss</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
+            <id>store-milvus</id>
+            <dependencies>
+                <dependency>
+                    <groupId>fr.vvlabs</groupId>
+                    <artifactId>recherche-documentaire-engine-milvus</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+</project>
+
+
+
+

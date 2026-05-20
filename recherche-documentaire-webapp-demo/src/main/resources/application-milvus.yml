@@ -1,0 +1,19 @@
+spring:
+  config:
+    activate:
+      on-profile: milvus
+
+app:
+  indexer:
+    default: bert
+  search:
+    default: bert
+  parser.ocr:
+    tesseract:
+      dataPath: /usr/share/tessdata
+  embeddings:
+    store:
+      default: milvus
+      milvus:
+        enabled: true
+

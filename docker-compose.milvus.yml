@@ -1,0 +1,134 @@
+# Integration Milvus pour le POC recherche documentaire.
+#
+# Demarre :
+#   - postgres : base PostgreSQL sur le port 5432
+#   - etcd     : dependance interne Milvus
+#   - minio    : stockage objet interne Milvus
+#   - milvus   : serveur vectoriel Milvus standalone sur les ports 19530/9091
+#   - app      : application Spring Boot (profil milvus) sur le port 8080
+#
+# Usage :
+#   docker compose -f docker-compose.milvus.yml up --build
+#
+# Arret :
+#   docker compose -f docker-compose.milvus.yml down
+#
+# Note : le premier demarrage est lent car Maven telecharge les dependances
+# et DJL telecharge le modele sentence-transformers/all-MiniLM-L6-v2 au
+# premier appel d'indexation.
+
+services:
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: recherche_documentaire
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recherche_documentaire"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >-
+      etcd
+      --advertise-client-urls=http://etcd:2379
+      --listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    volumes:
+      - milvus-etcd:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: minio server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - milvus-minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  milvus:
+    image: milvusdb/milvus:latest
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  app:
+    build:
+      context: .
+      args:
+        MAVEN_PROFILES: store-milvus
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: milvus
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/recherche_documentaire
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      APP_EMBEDDINGS_STORE_MILVUS_BASE_URL: http://milvus:19530
+      APP_EMBEDDINGS_STORE_MILVUS_COLLECTION: document_embeddings
+    volumes:
+      - ./storage:/app/storage
+      - ./lucene-suggest:/app/lucene-suggest
+      - djl-cache:/root/.djl.ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+
+volumes:
+  djl-cache:
+  postgres-data:
+  milvus-etcd:
+  milvus-minio:
+  milvus-data:
+
+
