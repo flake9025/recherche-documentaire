@@ -33,11 +33,12 @@
 - Build + tests: `mvn clean test`
 - Build jar: `mvn -DskipTests package`
 - Run local: `java -jar target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar`
-- Run compose (app bert + faiss): `docker compose up --build`
+- Run compose Lucene Vector: `docker compose -f docker-compose.lucene-vector.yml up --build`
+- Run compose (app bert + faiss): `docker compose -f docker-compose.faiss.yml up --build`
 - Run compose Qdrant: `docker compose -f docker-compose.qdrant.yml up --build`
 - Run compose Milvus: `docker compose -f docker-compose.milvus.yml up --build`
-- Arret compose: `docker compose down`
-- CI GitHub: `/.github/workflows/build.yml` valide `lucene`, `faiss`, `qdrant` et `milvus` par smoke tests Docker/Compose avant publication
+- Arret compose: `docker compose -f docker-compose.faiss.yml down` (ou le fichier compose correspondant)
+- CI GitHub: `/.github/workflows/build.yml` valide `lucene`, `lucene-vector`, `faiss`, `qdrant` et `milvus` par smoke tests Docker/Compose avant publication
 
 ## Conventions de code observees
 - Selection de strategie par `getType()` + factories + `@ConditionalOnProperty` (pattern central du projet).
@@ -58,6 +59,8 @@
 - Ne pas supposer que moteur d'indexation == moteur de recherche: les deux sont decouples par config.
 - En mode `faiss-remote`, activer **a la fois** `app.embeddings.store.default=faiss-remote` et `app.embeddings.store.faiss.enabled=true`.
 - `storage/` et `lucene-suggest/` contiennent de l'etat local; les supprimer reset les donnees de demo.
+
+
 
 
 

@@ -40,6 +40,7 @@ jobs:
       matrix:
         scenario:
           - lucene
+          - lucene-vector
           - faiss
           - qdrant
           - milvus
@@ -80,9 +81,25 @@ jobs:
           docker compose -f docker-compose.lucene.yml logs --no-color
           exit 1
 
+      - name: Start Lucene Vector stack
+        if: matrix.scenario == 'lucene-vector'
+        run: docker compose -f docker-compose.lucene-vector.yml up -d --build
+
+      - name: Smoke test Lucene Vector stack
+        if: matrix.scenario == 'lucene-vector'
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8080/actuator/health; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose -f docker-compose.lucene-vector.yml logs --no-color
+          exit 1
+
       - name: Start FAISS stack
         if: matrix.scenario == 'faiss'
-        run: docker compose up -d --build
+        run: docker compose -f docker-compose.faiss.yml up -d --build
 
       - name: Smoke test FAISS stack
         if: matrix.scenario == 'faiss'
@@ -101,7 +118,7 @@ jobs:
             sleep 5
           done
 
-          docker compose logs --no-color
+          docker compose -f docker-compose.faiss.yml logs --no-color
           exit 1
 
       - name: Start Qdrant stack
@@ -157,7 +174,8 @@ jobs:
         run: |
           docker ps -a || true
           docker compose -f docker-compose.lucene.yml logs --no-color || true
-          docker compose logs --no-color || true
+          docker compose -f docker-compose.lucene-vector.yml logs --no-color || true
+          docker compose -f docker-compose.faiss.yml logs --no-color || true
           docker compose -f docker-compose.qdrant.yml logs --no-color || true
           docker compose -f docker-compose.milvus.yml logs --no-color || true
 
@@ -165,7 +183,8 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.lucene.yml down -v || true
-          docker compose down -v || true
+          docker compose -f docker-compose.lucene-vector.yml down -v || true
+          docker compose -f docker-compose.faiss.yml down -v || true
           docker compose -f docker-compose.qdrant.yml down -v || true
           docker compose -f docker-compose.milvus.yml down -v || true
 

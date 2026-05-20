@@ -6,10 +6,10 @@
 #   - app     : application Spring Boot (profil bert) sur le port 8080
 #
 # Usage :
-#   docker compose up --build
+#   docker compose -f docker-compose.faiss.yml up --build
 #
 # Arrêt :
-#   docker compose down
+#   docker compose -f docker-compose.faiss.yml down
 #
 # Note : le premier démarrage est lent car Maven télécharge les dépendances
 # et DJL télécharge le modèle sentence-transformers/all-MiniLM-L6-v2 au

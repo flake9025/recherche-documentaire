@@ -1,0 +1,55 @@
+# Stack locale Lucene Vector + PostgreSQL pour le POC recherche documentaire.
+#
+# Demarre :
+#   - postgres : base PostgreSQL sur le port 5432
+#   - app      : application Spring Boot (profil lucene-vector) sur le port 8080
+#
+# Usage :
+#   docker compose -f docker-compose.lucene-vector.yml up --build
+#
+# Arret :
+#   docker compose -f docker-compose.lucene-vector.yml down
+
+services:
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: recherche_documentaire
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recherche_documentaire"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      args:
+        MAVEN_PROFILES: engine-lucene-vector
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: lucene-vector
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/recherche_documentaire
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    volumes:
+      - ./storage:/app/storage
+      - ./lucene-suggest:/app/lucene-suggest
+      - djl-cache:/root/.djl.ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  djl-cache:
+  postgres-data:
+

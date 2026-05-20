@@ -403,12 +403,35 @@ Arret:
 docker compose -f docker-compose.lucene.yml down
 ```
 
+## Integration Lucene Vector + PostgreSQL avec Docker Compose
+
+Le fichier `docker-compose.lucene-vector.yml` demarre l'application Spring Boot en profil `lucene-vector` avec PostgreSQL:
+
+```bash
+docker compose -f docker-compose.lucene-vector.yml up --build
+```
+
+Ce qui est lance:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `postgres` | 5432 | Base PostgreSQL du POC |
+| `app`      | 8080 | Spring Boot en profil `lucene-vector` |
+
+Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=engine-lucene-vector` pour n'embarquer que le moteur Lucene vectoriel natif dans l'image applicative.
+
+Arret:
+
+```bash
+docker compose -f docker-compose.lucene-vector.yml down
+```
+
 ## Docker
 
 ### Image Spring Boot seule
 
 Ces exemples supposent qu'un PostgreSQL est deja accessible.
-Le plus simple reste d'utiliser `docker-compose.lucene.yml`; sinon, injecter explicitement l'URL JDBC adaptee a votre environnement Docker.
+Le plus simple reste d'utiliser `docker-compose.lucene.yml` ou `docker-compose.lucene-vector.yml`; sinon, injecter explicitement l'URL JDBC adaptee a votre environnement Docker.
 
 ```bash
 docker build -t poc-recherche-documentaire .
@@ -499,10 +522,10 @@ architecture si le cache `/root/.djl.ai` est vide.
 
 ## Integration FAISS avec Docker Compose
 
-Le fichier `docker-compose.yml` demarre les services FAISS, PostgreSQL et l'application en une commande:
+Le fichier `docker-compose.faiss.yml` demarre les services FAISS, PostgreSQL et l'application en une commande:
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.faiss.yml up --build
 ```
 
 Ce qui est lance:
