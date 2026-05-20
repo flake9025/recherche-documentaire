@@ -55,7 +55,6 @@
                     <div class="page-title">
                         <span class="page-eyebrow">Portail documentaire</span>
                         <h1>Bibliotheque de documents</h1>
-                        <p>Centralisez, indexez et retrouvez rapidement vos documents.</p>
                         <div class="hero-badges" aria-label="Fonctionnalites principales" style="display:none">
                             <span class="hero-badge">Recherche multi-moteurs</span>
                             <span class="hero-badge">Indexation et OCR</span>
@@ -70,10 +69,6 @@
             </header>
 
             <section class="toolbar">
-                <div class="toolbar-copy">
-                    <span class="section-eyebrow">Filtres globaux</span>
-                    <p>Affinez vos recherches</p>
-                </div>
                 <div class="toolbar-group">
                     <label class="control">
                         Filtrer par catégorie
@@ -147,7 +142,6 @@
                     <div class="panel-header">
                         <div>
                             <h2>Rechercher dans les documents</h2>
-                            <p class="panel-subtitle">Posez une question ou utilisez les suggestions pour gagner du temps.</p>
                         </div>
                         <span class="panel-tag">Étape 1</span>
                     </div>
@@ -155,9 +149,8 @@
                     <div class="panel-layout">
                         <div class="panel-main">
                             <div class="field field-lg">
-                                <label for="searchQuery">Votre recherche</label>
                                 <textarea class="search-box search-textarea" id="searchQuery" rows="4" placeholder="Ex. : facture client, rapport annuel, Alice Martin..."></textarea>
-                                <div class="chip-group" aria-label="Suggestions de recherche">
+                                <div class="chip-group" aria-label="Suggestions de recherche" style="display:none">
                                     <button class="chip" type="button" data-query="facture client">Facture client</button>
                                     <button class="chip" type="button" data-query="rapport trimestriel">Rapport trimestriel</button>
                                     <button class="chip" type="button" data-query="Alice Martin">Alice Martin</button>
