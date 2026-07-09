@@ -97,7 +97,9 @@ app:
       max-results: 25
       # Plus la valeur est elevee, plus la recherche explore de candidats KNN.
       # Augmenter peut ameliorer la pertinence mais degrade les performances.
-      candidate-multiplier: 4
+      # Avec le chunking, un document occupe plusieurs vecteurs: une valeur plus
+      # elevee evite que le top-k soit monopolise par les chunks d'un seul document.
+      candidate-multiplier: 8
       # Score minimal pour considerer un voisin vectoriel comme pertinent.
       # Une valeur trop haute elimine facilement des documents pourtant proches
       # sur des requetes courtes ou des corpus heterogenes.
@@ -114,6 +116,17 @@ app:
     # Modele Hugging Face utilise pour produire les embeddings.
     # Changer ce modele peut modifier les resultats et le temps de chargement.
     model-id: sentence-transformers/all-MiniLM-L6-v2
+    # Decoupage du contenu en chunks avant embedding (moteurs vectoriels).
+    # Les modeles sentence-transformers tronquent silencieusement au-dela de leur
+    # fenetre de tokens (~256 pour all-MiniLM-L6-v2). Le chunking embedde chaque
+    # passage separement pour ne pas perdre le contenu long et affiner la pertinence.
+    chunk:
+      # Active le decoupage en chunks. Si false, le document est embedde en un seul vecteur.
+      enabled: true
+      # Taille de la fenetre en tokens (aligner sur la fenetre du modele).
+      max-tokens: 256
+      # Chevauchement en tokens entre deux chunks consecutifs (continuite du sens).
+      overlap-tokens: 32
     store:
       # Backend de stockage des embeddings.
       # Valeurs possibles :

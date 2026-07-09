@@ -5,7 +5,10 @@ import fr.vvlabs.recherche.model.BertEmbeddingsIndexEntity;
 import fr.vvlabs.recherche.repository.BertEmbeddingsIndexRepository;
 import fr.vvlabs.recherche.service.index.IndexService;
 import fr.vvlabs.recherche.service.index.IndexType;
+import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStore;
 import fr.vvlabs.recherche.service.index.embeddings.store.BertEmbeddingsStoreFactory;
+import fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunk;
+import fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunker;
 import fr.vvlabs.recherche.service.index.lucene.LuceneAutocompleteService;
 import fr.vvlabs.recherche.service.cipher.CipherService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +45,7 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
     private final BertEmbeddingsIndexRepository indexRepository;
     private final CipherService cipherService;
     private final LuceneAutocompleteService luceneAutocompleteService;
+    private final TextChunker textChunker;
 
     @Value("${app.indexer.use-database}")
     private boolean useDatabase;
@@ -59,27 +63,46 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         // Un embedding est un vecteur de flottants qui represente le sens global
         // d'un texte dans un espace numerique. Deux textes proches par le sens
         // doivent produire des vecteurs proches.
-        String indexedText = bertEmbeddingsService.buildIndexText(
-                documentDTO.getTitre(),
-                documentDTO.getAuteur(),
-                documentDTO.getCategorie(),
-                documentDTO.getNomFichier(),
-                data
-        );
-        float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
+        //
+        // Le contenu est decoupe en chunks alignes sur la fenetre de tokens du modele:
+        // chaque chunk est embedde separement (avec les metadonnees du document) et
+        // stocke comme une entree distincte, pour ne pas perdre le contenu au-dela de
+        // la limite de tokens et affiner la pertinence par passage.
+        BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
+        // Purge des anciens chunks avant reindexation (le nombre de chunks peut diminuer).
+        store.deleteByDocumentId(documentDTO.getId());
 
-        BertEmbeddingDocument document = new BertEmbeddingDocument(
-                documentDTO.getId(),
-                documentDTO.getTitre(),
-                documentDTO.getAuteur(),
-                documentDTO.getCategorie(),
-                documentDTO.getNomFichier(),
-                documentDTO.getDepotDateTime(),
-                data,
-                vector
-        );
+        List<TextChunk> chunks = textChunker.chunk(data);
+        if (chunks.isEmpty()) {
+            // Document sans contenu exploitable: on indexe tout de meme les metadonnees.
+            chunks = List.of(new TextChunk(0, 1, ""));
+        }
 
-        bertEmbeddingsStoreFactory.getDefaultStore().upsert(document);
+        int chunkCount = chunks.size();
+        for (TextChunk chunk : chunks) {
+            String indexedText = bertEmbeddingsService.buildIndexText(
+                    documentDTO.getTitre(),
+                    documentDTO.getAuteur(),
+                    documentDTO.getCategorie(),
+                    documentDTO.getNomFichier(),
+                    chunk.text()
+            );
+            float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
+
+            BertEmbeddingDocument document = new BertEmbeddingDocument(
+                    documentDTO.getId(),
+                    chunk.index(),
+                    chunkCount,
+                    documentDTO.getTitre(),
+                    documentDTO.getAuteur(),
+                    documentDTO.getCategorie(),
+                    documentDTO.getNomFichier(),
+                    documentDTO.getDepotDateTime(),
+                    chunk.text(),
+                    vector
+            );
+            store.upsert(document);
+        }
     }
 
     @Override
@@ -120,14 +143,16 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(indexData))) {
             // On recharge tout le store en RAM pour que la recherche BERT
             // n'ait pas a relire la base a chaque requete.
-            int documentCount = dis.readInt();
-            for (int i = 0; i < documentCount; i++) {
+            int chunkCount = dis.readInt();
+            for (int i = 0; i < chunkCount; i++) {
                 entities.add(readEmbedding(dis));
             }
         }
 
-        bertEmbeddingsStoreFactory.getDefaultStore().replaceAll(entities);
-        log.info("Embeddings index {} with {} documents loaded from database", INDEX_NAME, entities.size());
+        BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
+        store.replaceAll(entities);
+        log.info("Embeddings index {} with {} chunks ({} documents) loaded from database",
+                INDEX_NAME, entities.size(), store.countDocuments());
         return null;
     }
 
@@ -140,7 +165,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
 
         // Le store memoire est serialise puis chiffre pour conserver
         // un etat redemarrable sans stocker l'index en clair en base.
-        List<BertEmbeddingDocument> entities = bertEmbeddingsStoreFactory.getDefaultStore().findAll();
+        BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
+        List<BertEmbeddingDocument> entities = store.findAll();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (DataOutputStream dos = new DataOutputStream(baos)) {
             dos.writeInt(entities.size());
@@ -152,11 +178,12 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         BertEmbeddingsIndexEntity entity = indexRepository.findByIndexName(INDEX_NAME).orElse(new BertEmbeddingsIndexEntity());
         entity.setIndexName(INDEX_NAME);
         entity.setIndexData(cipherService.encrypt(baos.toByteArray()));
-        entity.setDocumentCount((long) entities.size());
+        entity.setDocumentCount(store.countDocuments());
         entity.setLastUpdated(LocalDateTime.now());
 
         indexRepository.save(entity);
-        log.info("Embeddings index {} saved to database", INDEX_NAME);
+        log.info("Embeddings index {} saved to database ({} chunks, {} documents)",
+                INDEX_NAME, entities.size(), store.countDocuments());
     }
 
     @Override
@@ -168,6 +195,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
 
     private void writeEmbedding(DataOutputStream dos, BertEmbeddingDocument entity) throws IOException {
         dos.writeLong(entity.documentId());
+        dos.writeInt(entity.chunkIndex());
+        dos.writeInt(entity.chunkCount());
         writeString(dos, entity.title());
         writeString(dos, entity.author());
         writeString(dos, entity.category());
@@ -184,6 +213,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
 
     private BertEmbeddingDocument readEmbedding(DataInputStream dis) throws IOException {
         long documentId = dis.readLong();
+        int chunkIndex = dis.readInt();
+        int chunkCount = dis.readInt();
         String title = readString(dis);
         String author = readString(dis);
         String category = readString(dis);
@@ -197,6 +228,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         dis.readFully(embeddingData);
         return new BertEmbeddingDocument(
                 documentId,
+                chunkIndex,
+                chunkCount,
                 title,
                 author,
                 category,

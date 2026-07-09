@@ -16,6 +16,7 @@
 - `lucene`: index texte in-memory `ByteBuffersDirectory` + sauvegarde BLOB (`LuceneIndexService`).
 - `bert`: embeddings DJL + reranking lexical metier (`BertEmbeddingsSearchService`), store selectionne par `BertEmbeddingsStoreFactory`.
 - `lucene-vector`: `KnnFloatVectorField` natif Lucene (`LuceneVectorIndexService`/`LuceneVectorSearchService`).
+- Chunking vectoriel: le contenu est decoupe par tokens (`TextChunker`, `service/index/embeddings/chunk/`) avant embedding, 1 chunk = 1 vecteur = 1 entree de store. Cle composite `pointId = documentId * 10000 + chunkIndex` (`BertEmbeddingDocument.pointId()`). La recherche sur-echantillonne puis regroupe en best-chunk par document (`BertEmbeddingsStore.bestChunkPerDocument`, dedup par `ID` cote `LuceneVectorSearchService`). Concerne uniquement les moteurs vectoriels (`bert`, `lucene-vector` + stores). Reglage: `app.embeddings.chunk.{enabled,max-tokens,overlap-tokens}`.
 - Stores BERT actifs:
   - `hashmap` en memoire (`store/hashmap/HashMapBertEmbeddingsStore.java`)
   - `faiss-remote` via HTTP (`store/faiss/FaissRemoteBertEmbeddingsStore.java`) vers `faiss-service/app.py`
@@ -25,8 +26,8 @@
 ## Config/profils qui changent le comportement
 - Base locale: `src/main/resources/application.yml` (par defaut `lucene-vector` + OCR active + storage `fs`).
 - Profils Docker/Linux: `application-lucene.yml`, `application-bert.yml`, `application-lucene-vector.yml`, `application-milvus.yml` (forcent `tesseract.dataPath=/usr/share/tessdata`).
-- Les parsers OCR sont separes en modules Maven `recherche-documentaire-parser-tesseract`, `recherche-documentaire-parser-pdfbox` et `recherche-documentaire-parser-tika`, mais restent embarques ensemble dans la webapp; les beans sont selectionnes via `app.parser.ocr.default` + `app.parser.ocr.enabled`.
-- Les backends de stockage sont separes en modules Maven `recherche-documentaire-storage-fs`, `recherche-documentaire-storage-s3` et `recherche-documentaire-storage-netapp`, mais restent embarques ensemble dans la webapp; les beans `s3` et `netapp` sont conditionnels (`app.storage.s3.enabled=true`, `app.storage.netapp.enabled=true`), sinon `FSStorageService` via `recherche-documentaire-storage-fs`.
+- Les parsers OCR sont regroupes dans le module Maven `recherche-documentaire-parser-marketplace` (`tesseract`, `pdfbox`, `tika`, `markdown`, `xml`/drawio), embarque dans la webapp; les beans sont selectionnes via `app.parser.ocr.default` + `app.parser.ocr.enabled`.
+- Les backends de stockage sont regroupes dans le module Maven `recherche-documentaire-storage-marketplace` (`fs`, `s3`, `netapp`), embarque dans la webapp; les beans `s3` et `netapp` sont conditionnels (`app.storage.s3.enabled=true`, `app.storage.netapp.enabled=true`), sinon `FSStorageService` (`fs`).
 - La tache OCR asynchrone est desactivee par defaut (`app.task.ocr.enabled=false`) et executee par `OCRIndexTask` + virtual threads (`config/AsyncConfig.java`).
 
 ## Workflows dev fiables

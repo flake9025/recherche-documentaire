@@ -2,6 +2,7 @@ package fr.vvlabs.recherche.service.index.embeddings;
 
 import ai.djl.MalformedModelException;
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
+import ai.djl.huggingface.tokenizers.jni.CharSpan;
 import ai.djl.huggingface.translator.TextEmbeddingTranslator;
 import ai.djl.inference.Predictor;
 import ai.djl.repository.zoo.Criteria;
@@ -27,6 +28,7 @@ public class BertEmbeddingsService {
     private final String modelId;
     private ZooModel<String, float[]> model;
     private Predictor<String, float[]> predictor;
+    private HuggingFaceTokenizer tokenizer;
 
     public BertEmbeddingsService(@Value("${app.embeddings.model-id:sentence-transformers/all-MiniLM-L6-v2}") String modelId)
             throws ModelNotFoundException, MalformedModelException, IOException {
@@ -51,6 +53,28 @@ public class BertEmbeddingsService {
             return predictor.predict(normalizedText);
         } catch (TranslateException e) {
             throw new IllegalStateException("Failed to generate embedding with model " + modelId, e);
+        } catch (ModelNotFoundException | MalformedModelException | IOException e) {
+            throw new IllegalStateException("Failed to load embedding model " + modelId, e);
+        }
+    }
+
+    /**
+     * Encode un texte et retourne les positions (offsets de caracteres) de chaque token,
+     * sans tokens speciaux. Utilise par le decoupage en chunks pour aligner les passages
+     * sur la fenetre de tokens reellement consommee par le modele.
+     *
+     * @param text texte a encoder
+     * @return spans de caracteres par token (peut contenir des entrees nulles pour les tokens sans position)
+     */
+    public CharSpan[] encodeCharSpans(String text) {
+        String normalizedText = StringUtils.trimToEmpty(text);
+        if (normalizedText.isBlank()) {
+            return new CharSpan[0];
+        }
+        try {
+            ensureModelLoaded();
+            // addSpecialTokens=false: on ne veut que les tokens de contenu, avec leurs offsets.
+            return tokenizer.encode(normalizedText, false, false).getCharTokenSpans();
         } catch (ModelNotFoundException | MalformedModelException | IOException e) {
             throw new IllegalStateException("Failed to load embedding model " + modelId, e);
         }
@@ -93,8 +117,8 @@ public class BertEmbeddingsService {
 
         // DJL charge le modele Sentence-Transformers depuis Hugging Face et expose
         // un predictor qui transforme un texte libre en vecteur numerique.
-        HuggingFaceTokenizer tokenizer = HuggingFaceTokenizer.newInstance(modelId);
-        TextEmbeddingTranslator translator = TextEmbeddingTranslator.builder(tokenizer).build();
+        HuggingFaceTokenizer huggingFaceTokenizer = HuggingFaceTokenizer.newInstance(modelId);
+        TextEmbeddingTranslator translator = TextEmbeddingTranslator.builder(huggingFaceTokenizer).build();
         Criteria<String, float[]> criteria = Criteria.builder()
                 .setTypes(String.class, float[].class)
                 .optModelUrls("djl://ai.djl.huggingface.pytorch/" + modelId)
@@ -103,6 +127,9 @@ public class BertEmbeddingsService {
 
         this.model = criteria.loadModel();
         this.predictor = model.newPredictor();
+        // Le tokenizer est conserve pour le decoupage en chunks (offsets de caracteres),
+        // afin de partager exactement la meme tokenisation que l'embedding.
+        this.tokenizer = huggingFaceTokenizer;
         log.info("Embeddings model loaded: {}", modelId);
     }
 

@@ -38,7 +38,16 @@ public class HashMapBertEmbeddingsStore implements BertEmbeddingsStore {
         if (document == null || document.documentId() == null) {
             return;
         }
-        documents.put(document.documentId(), document);
+        // Cle = pointId (documentId + chunkIndex) pour autoriser plusieurs chunks par document.
+        documents.put(document.pointId(), document);
+    }
+
+    @Override
+    public void deleteByDocumentId(Long documentId) {
+        if (documentId == null) {
+            return;
+        }
+        documents.values().removeIf(document -> documentId.equals(document.documentId()));
     }
 
     @Override

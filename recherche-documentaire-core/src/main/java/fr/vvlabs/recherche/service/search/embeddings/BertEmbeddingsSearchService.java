@@ -72,14 +72,18 @@ public class BertEmbeddingsSearchService implements SearchService {
         Set<String> queryTokens = tokenize(query);
 
         BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
-        List<SearchFragmentDTO> fragments = store.search(new BertEmbeddingsStoreQuery(
-                        queryVector,
-                        effectiveRequest.getCategory(),
-                        effectiveRequest.getAuthor(),
-                        effectiveRequest.getDateFrom(),
-                        effectiveRequest.getDateTo(),
-                        candidateLimit
-                )).stream()
+        // Le store renvoie des correspondances au niveau chunk: on reduit d'abord au
+        // meilleur chunk par document (score semantique max), puis on applique le
+        // rescoring hybride sur le chunk gagnant.
+        List<BertEmbeddingMatch> chunkMatches = store.search(new BertEmbeddingsStoreQuery(
+                queryVector,
+                effectiveRequest.getCategory(),
+                effectiveRequest.getAuthor(),
+                effectiveRequest.getDateFrom(),
+                effectiveRequest.getDateTo(),
+                candidateLimit
+        ));
+        List<SearchFragmentDTO> fragments = BertEmbeddingsStore.bestChunkPerDocument(chunkMatches).stream()
                 .map(match -> toSearchFragment(match, query, queryTokens))
                 .filter(fragment -> query.isBlank() || fragment.getScore() >= minScore)
                 .sorted(Comparator.comparing(SearchFragmentDTO::getScore).reversed())

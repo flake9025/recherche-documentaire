@@ -4,5 +4,7 @@ public class OCRType {
     public static final String PDFBOX = "pdfbox";
     public static final String TIKA = "tika";
     public static final String TESSERACT = "tesseract";
+    public static final String MARKDOWN = "markdown";
+    public static final String XML = "xml";
 }
 

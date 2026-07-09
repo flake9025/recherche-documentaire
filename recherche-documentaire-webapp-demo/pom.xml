@@ -23,32 +23,17 @@
         </dependency>
         <dependency>
             <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-storage-fs</artifactId>
+            <artifactId>recherche-documentaire-storage-marketplace</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-storage-s3</artifactId>
+            <artifactId>recherche-documentaire-parser-marketplace</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-storage-netapp</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-parser-tesseract</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-parser-pdfbox</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>fr.vvlabs</groupId>
-            <artifactId>recherche-documentaire-parser-tika</artifactId>
+            <artifactId>recherche-documentaire-engine-marketplace</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -79,98 +64,8 @@
             </plugin>
         </plugins>
     </build>
-
-    <profiles>
-        <profile>
-            <id>all-engines</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-lucene</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-qdrant</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-faiss</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-milvus</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-lucene-vector</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>engine-lucene</id>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-lucene</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>engine-lucene-vector</id>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-lucene-vector</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>store-qdrant</id>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-qdrant</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>store-faiss</id>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-faiss</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-
-        <profile>
-            <id>store-milvus</id>
-            <dependencies>
-                <dependency>
-                    <groupId>fr.vvlabs</groupId>
-                    <artifactId>recherche-documentaire-engine-milvus</artifactId>
-                    <version>${project.version}</version>
-                </dependency>
-            </dependencies>
-        </profile>
-    </profiles>
 </project>
+
 
 
 

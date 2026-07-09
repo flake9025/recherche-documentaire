@@ -39,21 +39,20 @@ Les documents sont stockes via `StorageService`.
 Les metadonnees sont persistees via `DocumentService`.
 Le texte est extrait via `OCRServiceFactory`.
 
-Les implementations de parser/OCR sont elles aussi isolees dans des modules Maven
-dedies, tout en restant embarquees ensemble dans la webapp pour eviter les
-combinaisons de profils:
+Les implementations de parser/OCR sont regroupees dans un module Maven
+"marketplace" unique, embarque dans la webapp. Les beans sont selectionnes au
+runtime via `app.parser.ocr.default` + `app.parser.ocr.enabled`:
 
-- `recherche-documentaire-parser-tesseract`
-- `recherche-documentaire-parser-pdfbox`
-- `recherche-documentaire-parser-tika`
+- `recherche-documentaire-parser-marketplace`
+  - `tesseract`, `pdfbox`, `tika` (OCR/PDF)
+  - `markdown` (pages Confluence)
+  - `xml` (diagrammes draw.io / diagrams.net)
 
-Les implementations de stockage sont isolees dans des modules Maven dedies,
-mais restent embarquees ensemble dans la webapp pour eviter de croiser des
-combinaisons de profils `engine` et `storage`:
+Les implementations de stockage sont regroupees dans un module Maven
+"marketplace" unique, embarque dans la webapp. Les beans `s3` et `netapp` sont
+conditionnels, sinon `fs` par defaut:
 
-- `recherche-documentaire-storage-fs`
-- `recherche-documentaire-storage-s3`
-- `recherche-documentaire-storage-netapp`
+- `recherche-documentaire-storage-marketplace` (`fs`, `s3`, `netapp`)
 
 Par defaut, `application.yml` cible un poste Windows local avec une installation
 Tesseract classique. Les profils `lucene`, `lucene-vector` et `bert`
@@ -96,6 +95,34 @@ le meme contenu textuel que Lucene:
 - generation des embeddings via `BertEmbeddingsService`
 - recherche KNN Lucene avec filtres categorie/auteur/date
 - persistance du snapshot Lucene vectoriel dans la table `lucene_vector_index`
+
+#### Chunking des documents (moteurs vectoriels)
+
+Les modeles sentence-transformers tronquent silencieusement les entrees au-dela de
+leur fenetre de tokens (~256 pour `all-MiniLM-L6-v2`). Sans decoupage, tout le contenu
+au-dela de cette limite est ignore lors de l'indexation vectorielle.
+
+Pour y remedier, le contenu est decoupe en **chunks** (passages) alignes sur la fenetre
+de tokens du modele, via `TextChunker`
+(`service/index/embeddings/chunk/`) qui reutilise le tokenizer HuggingFace de l'embedding :
+
+- **1 chunk = 1 embedding = 1 entree** dans le store vectoriel (multi-vecteurs par document) ;
+- cle composite `pointId = documentId * 10000 + chunkIndex` (`BertEmbeddingDocument.pointId()`),
+  avec `documentId` et `chunkIndex` conserves dans le payload ;
+- cote `lucene-vector`, chaque chunk est un document Lucene distinct partageant le meme terme `ID` ;
+- a la recherche, on **sur-echantillonne** les candidats KNN puis on regroupe en
+  **meilleur chunk par document** (`bestChunkPerDocument`) ; l'extrait affiche est le passage qui a matche ;
+- ne concerne que les moteurs vectoriels (`bert`, `lucene-vector` et les stores associes) ;
+  le moteur `lucene` texte n'a pas de limite de tokens et n'est pas chunke.
+
+Reglages (voir `application.yml`) :
+
+| Propriete | Defaut | Role |
+|---|---|---|
+| `app.embeddings.chunk.enabled` | `true` | Active le decoupage (sinon 1 vecteur par document) |
+| `app.embeddings.chunk.max-tokens` | `256` | Taille de la fenetre en tokens |
+| `app.embeddings.chunk.overlap-tokens` | `32` | Chevauchement entre chunks consecutifs |
+| `app.search.vector.candidate-multiplier` | `8` | Sur-echantillonnage KNN pour compenser plusieurs chunks/document |
 
 ## Stores d'embeddings BERT
 
@@ -200,7 +227,8 @@ app:
         batch-size: 128
 ```
 
-Le profil Maven selectif associe est `store-milvus`.
+Le store `milvus` est fourni par `recherche-documentaire-engine-marketplace` et
+active au runtime via `app.embeddings.store.default=milvus`.
 
 ## Feature flags et configuration
 
@@ -309,37 +337,38 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 - Python 3.11 + FastAPI + FAISS (service `faiss-service/`)
 - AWS SDK v2 S3 (compatible MinIO)
 
-## Modules Maven et packaging selectif
+## Modules Maven
 
 La webapp runnable est le module `recherche-documentaire-webapp-demo`.
-Le projet accepte maintenant des profils Maven pour n'embarquer dans le jar Spring Boot que les engines utiles au scenario cible.
+Le projet est organise autour d'un socle commun et de trois modules
+"marketplace" qui regroupent chacun toutes les implementations d'une famille :
 
-Profils disponibles :
+| Module | Contenu |
+|---|---|
+| `recherche-documentaire-core` | interfaces, factories, entites, services communs |
+| `recherche-documentaire-parser-marketplace` | parsers OCR : `tesseract`, `pdfbox`, `tika`, `markdown`, `xml` |
+| `recherche-documentaire-storage-marketplace` | stockages : `fs`, `s3`, `netapp` |
+| `recherche-documentaire-engine-marketplace` | moteurs : `lucene`, `lucene-vector`, `qdrant`, `faiss`, `milvus` |
+| `recherche-documentaire-webapp-demo` | application Spring Boot runnable + UI |
 
-| Profil Maven | Contenu embarque | Cas d'usage |
-|---|---|---|
-| `all-engines` | tous les modules d'engine et de store | image generique par defaut |
-| `engine-lucene` | moteur `lucene` uniquement | image la plus legere pour recherche texte |
-| `engine-lucene-vector` | moteur `lucene-vector` uniquement | image vectorielle Lucene native |
-| `store-qdrant` | store BERT `qdrant` uniquement | profil `bert` avec backend Qdrant |
-| `store-faiss` | store BERT `faiss-remote` uniquement | profil `bert` avec backend FAISS |
-| `store-milvus` | store BERT `milvus` uniquement | profil `bert` avec backend Milvus |
+La webapp embarque **toujours l'ensemble** des marketplaces. Il n'y a plus de
+profils Maven de packaging selectif : la selection du moteur, du parser et du
+stockage se fait uniquement **au runtime** via la configuration :
 
-Exemples Maven :
+- `app.indexer.default` / `app.search.default` (moteur)
+- `app.parser.ocr.default` + `app.parser.ocr.enabled` (parser)
+- `app.storage.default` (+ flags `app.storage.s3.enabled` / `app.storage.netapp.enabled`)
+
+Le build packageant la webapp reste :
 
 ```bash
-mvn -B -pl recherche-documentaire-webapp-demo -am -Pengine-lucene -DskipTests package
-mvn -B -pl recherche-documentaire-webapp-demo -am -Pengine-lucene-vector -DskipTests package
-mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-qdrant -DskipTests package
-mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-faiss -DskipTests package
-mvn -B -pl recherche-documentaire-webapp-demo -am -Pstore-milvus -DskipTests package
+mvn -B -pl recherche-documentaire-webapp-demo -am -DskipTests package
 ```
 
 Important :
 
-- les profils Maven pilotent ce qui est **embarque au build**
-- `SPRING_PROFILES_ACTIVE` pilote toujours le comportement **au runtime**
-- le profil runtime choisi doit rester coherent avec les modules packages
+- `SPRING_PROFILES_ACTIVE` (profils Spring, ex. `lucene`, `bert`) pilote le comportement **au runtime**
+- les `application-*.yml` fixent les `app.*.default` correspondants au scenario
 
 ## Demarrage local
 
@@ -395,7 +424,7 @@ Ce qui est lance:
 | `postgres` | 5432 | Base PostgreSQL du POC |
 | `app`      | 8080 | Spring Boot en profil `lucene` |
 
-Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=engine-lucene` pour n'embarquer que le moteur Lucene dans l'image applicative.
+Le conteneur `app` selectionne le moteur Lucene au runtime via le profil Spring `lucene` (`SPRING_PROFILES_ACTIVE`).
 
 Arret:
 
@@ -418,7 +447,7 @@ Ce qui est lance:
 | `postgres` | 5432 | Base PostgreSQL du POC |
 | `app`      | 8080 | Spring Boot en profil `lucene-vector` |
 
-Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=engine-lucene-vector` pour n'embarquer que le moteur Lucene vectoriel natif dans l'image applicative.
+Le conteneur `app` selectionne le moteur Lucene vectoriel natif au runtime via le profil Spring `lucene-vector` (`SPRING_PROFILES_ACTIVE`).
 
 Arret:
 
@@ -445,17 +474,10 @@ docker run --rm -p 8080:8080 \
   poc-recherche-documentaire
 ```
 
-Pour construire une image plus legere, vous pouvez cibler explicitement un profil Maven :
-
-```bash
-docker build --build-arg MAVEN_PROFILES=engine-lucene -t poc-recherche-documentaire:lucene .
-docker build --build-arg MAVEN_PROFILES=engine-lucene-vector -t poc-recherche-documentaire:lucene-vector .
-docker build --build-arg MAVEN_PROFILES=store-qdrant -t poc-recherche-documentaire:bert-qdrant .
-docker build --build-arg MAVEN_PROFILES=store-faiss -t poc-recherche-documentaire:bert-faiss .
-docker build --build-arg MAVEN_PROFILES=store-milvus -t poc-recherche-documentaire:bert-milvus .
-```
-
-Le `Dockerfile` garde `all-engines` par defaut pour conserver une image generique si aucun `build-arg` n'est passe.
+L'image embarque l'ensemble des moteurs, parsers et stockages. Le scenario
+cible se choisit au runtime avec `SPRING_PROFILES_ACTIVE` (ex. `lucene`,
+`lucene-vector`, `bert`) et les `app.*.default` associes ; il n'y a plus de
+`build-arg` pour selectionner les modules embarques.
 
 Pour le mode `bert` ou `lucene-vector`, monter aussi le cache DJL pour eviter
 de retelecharger PyTorch (~600 MB) a chaque redemarrage :
@@ -536,7 +558,7 @@ Ce qui est lance:
 | `faiss` | 8090 | Service Python FAISS (`faiss-service/`) |
 | `app`   | 8080 | Spring Boot en profil `bert` + store `faiss-remote` |
 
-Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-faiss` pour ne garder que le store Java utile a ce scenario.
+Le conteneur `app` active le store `faiss-remote` au runtime via la configuration (`app.embeddings.store.default=faiss-remote` + `app.embeddings.store.faiss.enabled=true`).
 
 L'application attend que PostgreSQL et FAISS soient prets avant de demarrer (`depends_on: condition: service_healthy`).
 
@@ -571,7 +593,7 @@ Ce qui est lance:
 | `qdrant` | 6333 | Serveur Qdrant officiel |
 | `app`    | 8080 | Spring Boot en profil `bert` + store `qdrant` |
 
-Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-qdrant` pour ne garder que le store Java utile a ce scenario.
+Le conteneur `app` active le store `qdrant` au runtime via la configuration (`app.embeddings.store.default=qdrant`).
 
 Arret:
 
@@ -603,7 +625,7 @@ Ce qui est lance:
 | `milvus` | 19530 / 9091 | Serveur Milvus standalone |
 | `app` | 8080 | Spring Boot en profil `milvus` + store `milvus` |
 
-Le build Docker de ce compose passe automatiquement `MAVEN_PROFILES=store-milvus` pour ne garder que le store Java utile a ce scenario.
+Le conteneur `app` active le store `milvus` au runtime via la configuration (`app.embeddings.store.default=milvus`).
 
 Arret:
 

@@ -15,10 +15,19 @@ app = FastAPI(title="FAISS Remote Store", version="1.0.0")
 # ---------------------------------------------------------------------------
 # État global (in-memory, thread-safe)
 # ---------------------------------------------------------------------------
+# Facteur de derivation de la cle de point (doit rester aligne avec
+# BertEmbeddingDocument.POINT_ID_FACTOR cote Java).
+POINT_ID_FACTOR = 10_000
+
 _lock = threading.Lock()
-_docs: dict[int, dict] = {}                  # documentId → doc dict
+_docs: dict[int, dict] = {}                  # pointId → doc dict (un chunk = une entree)
 _index: Optional[faiss.IndexFlatIP] = None   # index FAISS courant
-_id_map: list[int] = []                      # position FAISS → documentId
+_id_map: list[int] = []                      # position FAISS → pointId
+
+
+def _point_id(document_id: int, chunk_index: int) -> int:
+    """Cle unique d'un chunk, miroir de BertEmbeddingDocument.pointId()."""
+    return document_id * POINT_ID_FACTOR + chunk_index
 
 
 # ---------------------------------------------------------------------------
@@ -26,6 +35,8 @@ _id_map: list[int] = []                      # position FAISS → documentId
 # ---------------------------------------------------------------------------
 class DocumentModel(BaseModel):
     documentId: int
+    chunkIndex: int = 0
+    chunkCount: int = 1
     title: Optional[str] = None
     author: Optional[str] = None
     category: Optional[str] = None
@@ -63,6 +74,8 @@ class StatsResponse(BaseModel):
 def _doc_to_model(doc: dict) -> DocumentModel:
     return DocumentModel(
         documentId=doc["documentId"],
+        chunkIndex=doc.get("chunkIndex", 0),
+        chunkCount=doc.get("chunkCount", 1),
         title=doc.get("title"),
         author=doc.get("author"),
         category=doc.get("category"),
@@ -144,7 +157,7 @@ def _cosine_similarity(q_vec: np.ndarray, doc_embedding: list) -> float:
 @app.post("/api/faiss/documents")
 def upsert_document(doc: DocumentModel) -> dict:
     with _lock:
-        _docs[doc.documentId] = doc.model_dump()
+        _docs[_point_id(doc.documentId, doc.chunkIndex)] = doc.model_dump()
         _rebuild_index()
     return {"status": "ok"}
 
@@ -153,6 +166,17 @@ def upsert_document(doc: DocumentModel) -> dict:
 def get_all_documents() -> List[DocumentModel]:
     with _lock:
         return [_doc_to_model(d) for d in _docs.values()]
+
+
+@app.delete("/api/faiss/documents/{document_id}")
+def delete_document(document_id: int) -> dict:
+    """Supprime tous les chunks d'un document (miroir de deleteByDocumentId)."""
+    with _lock:
+        stale = [pid for pid, d in _docs.items() if d.get("documentId") == document_id]
+        for pid in stale:
+            _docs.pop(pid, None)
+        _rebuild_index()
+    return {"status": "ok"}
 
 
 @app.delete("/api/faiss/documents")
@@ -170,7 +194,7 @@ def replace_documents(docs: List[DocumentModel]) -> dict:
     with _lock:
         _docs.clear()
         for doc in docs:
-            _docs[doc.documentId] = doc.model_dump()
+            _docs[_point_id(doc.documentId, doc.chunkIndex)] = doc.model_dump()
         _rebuild_index()
     return {"status": "ok"}
 

@@ -62,12 +62,17 @@ class BertEmbeddingsIndexServiceTest {
                 java.util.List.of(bertEmbeddingsStore),
                 "hashmap"
         );
+        // Chunking desactive: le contenu est indexe en un seul chunk (sans tokenizer),
+        // ce qui garde ce test unitaire focalise sur la logique d'indexation/serialisation.
+        fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunker textChunker =
+                new fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunker(bertEmbeddingsService, false, 256, 32);
         service = new BertEmbeddingsIndexService(
                 bertEmbeddingsService,
                 bertEmbeddingsStoreFactory,
                 indexRepository,
                 cipherService,
-                luceneAutocompleteService
+                luceneAutocompleteService,
+                textChunker
         );
     }
 
@@ -199,6 +204,8 @@ class BertEmbeddingsIndexServiceTest {
              DataOutputStream dos = new DataOutputStream(baos)) {
             dos.writeInt(1);
             dos.writeLong(documentId);
+            dos.writeInt(0); // chunkIndex
+            dos.writeInt(1); // chunkCount
             writeString(dos, title);
             writeString(dos, author);
             writeString(dos, category);

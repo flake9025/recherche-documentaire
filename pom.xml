@@ -21,17 +21,9 @@
 
     <modules>
         <module>recherche-documentaire-core</module>
-        <module>recherche-documentaire-storage-fs</module>
-        <module>recherche-documentaire-storage-s3</module>
-        <module>recherche-documentaire-storage-netapp</module>
-        <module>recherche-documentaire-parser-tesseract</module>
-        <module>recherche-documentaire-parser-pdfbox</module>
-        <module>recherche-documentaire-parser-tika</module>
-        <module>recherche-documentaire-engine-lucene</module>
-        <module>recherche-documentaire-engine-qdrant</module>
-        <module>recherche-documentaire-engine-faiss</module>
-        <module>recherche-documentaire-engine-milvus</module>
-        <module>recherche-documentaire-engine-lucene-vector</module>
+        <module>recherche-documentaire-storage-marketplace</module>
+        <module>recherche-documentaire-parser-marketplace</module>
+        <module>recherche-documentaire-engine-marketplace</module>
         <module>recherche-documentaire-webapp-demo</module>
     </modules>
 

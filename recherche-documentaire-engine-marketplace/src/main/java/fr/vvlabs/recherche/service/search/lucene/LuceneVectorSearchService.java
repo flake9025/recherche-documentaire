@@ -1,0 +1,221 @@
+package fr.vvlabs.recherche.service.search.lucene;
+
+import fr.vvlabs.recherche.config.IndexConstants;
+import fr.vvlabs.recherche.config.LuceneConfig;
+import fr.vvlabs.recherche.dto.SearchFragmentDTO;
+import fr.vvlabs.recherche.dto.SearchRequestDTO;
+import fr.vvlabs.recherche.dto.SearchResultDTO;
+import fr.vvlabs.recherche.service.index.IndexType;
+import fr.vvlabs.recherche.service.index.embeddings.BertEmbeddingsService;
+import fr.vvlabs.recherche.service.search.SearchService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.StoredFields;
+import org.apache.lucene.queryparser.classic.QueryParser;
+import org.apache.lucene.search.BooleanClause;
+import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.KnnFloatVectorQuery;
+import org.apache.lucene.search.MatchAllDocsQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.TopDocs;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
+
+import static fr.vvlabs.recherche.service.index.lucene.LuceneVectorIndexService.VECTOR_FIELD;
+
+@Service
+@ConditionalOnProperty(name = "app.search.default", havingValue = IndexType.LUCENE_VECTOR)
+@RequiredArgsConstructor
+@Slf4j
+public class LuceneVectorSearchService implements SearchService {
+
+    private static final DateTimeFormatter INDEX_DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+
+    private final LuceneConfig luceneConfig;
+    private final BertEmbeddingsService bertEmbeddingsService;
+
+    @Value("${app.search.vector.max-results:25}")
+    private int maxResults;
+
+    @Value("${app.search.vector.candidate-multiplier:4}")
+    private int candidateMultiplier;
+
+    @Value("${app.search.vector.min-score:0.75}")
+    private float minScore;
+
+    @Value("${app.search.vector.min-query-length:3}")
+    private int minQueryLength;
+
+    @Override
+    public String getType() {
+        return IndexType.LUCENE_VECTOR;
+    }
+
+    @Override
+    public SearchResultDTO search(SearchRequestDTO request) throws Exception {
+        SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
+        String queryText = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
+        SearchResultDTO result = new SearchResultDTO();
+
+        if (shouldSkipVectorSearch(queryText, effectiveRequest)) {
+            log.debug("Lucene vector search skipped because query is too weak and no restrictive filters were provided");
+            return result;
+        }
+
+        float[] queryVector = bertEmbeddingsService.generateEmbedding(queryText);
+        Query filterQuery = buildFilterQuery(effectiveRequest.getCategory(), effectiveRequest.getAuthor());
+
+        try (IndexReader reader = DirectoryReader.open(luceneConfig.getDocumentsIndex())) {
+            IndexSearcher searcher = new IndexSearcher(reader);
+            int k = Math.max(maxResults, 1);
+            // Avec le chunking, un meme document peut occuper plusieurs docs Lucene:
+            // on sur-echantillonne les candidats KNN pour ne pas manquer de documents
+            // distincts quand les meilleurs chunks proviennent d'un meme document.
+            int candidateCount = Math.max(k, k * Math.max(candidateMultiplier, 1));
+            TopDocs topDocs = searcher.search(
+                    new KnnFloatVectorQuery(VECTOR_FIELD, queryVector, candidateCount, filterQuery),
+                    candidateCount
+            );
+
+            StoredFields storedFields = searcher.storedFields();
+            // Regroupement best-chunk par document: on garde le meilleur score par ID.
+            java.util.LinkedHashMap<String, SearchFragmentDTO> bestByDocument = new java.util.LinkedHashMap<>();
+            for (ScoreDoc hit : topDocs.scoreDocs) {
+                if (hit.score < minScore) {
+                    continue;
+                }
+
+                Document doc = storedFields.document(hit.doc);
+                if (!matchesDateRange(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT), effectiveRequest.getDateFrom(), effectiveRequest.getDateTo())) {
+                    continue;
+                }
+
+                String documentId = doc.get(IndexConstants.INDEX_KEY_ID);
+                SearchFragmentDTO existing = bestByDocument.get(documentId);
+                if (existing != null && existing.getScore() >= hit.score) {
+                    // Un meilleur chunk de ce document a deja ete retenu.
+                    continue;
+                }
+
+                SearchFragmentDTO fragment = new SearchFragmentDTO();
+                fragment.setId(documentId);
+                fragment.setName(doc.get(IndexConstants.INDEX_KEY_NAME));
+                fragment.setAuthor(doc.get(IndexConstants.INDEX_KEY_AUTEUR));
+                fragment.setCategory(doc.get(IndexConstants.INDEX_KEY_CATEGORIE));
+                fragment.setDate(doc.get(IndexConstants.INDEX_KEY_DATE_DEPOT));
+                fragment.setFilename(doc.get(IndexConstants.INDEX_KEY_FICHIER));
+                fragment.setFileUrl("/api/documents/" + documentId + "/file");
+                // L'extrait affiche est le passage (chunk) qui a matche.
+                fragment.setFragment(buildFragment(doc.get(IndexConstants.INDEX_KEY_CONTENT)));
+                fragment.setScore(hit.score);
+                bestByDocument.put(documentId, fragment);
+            }
+
+            bestByDocument.values().stream()
+                    .sorted(java.util.Comparator.comparing(SearchFragmentDTO::getScore).reversed())
+                    .limit(maxResults)
+                    .forEach(result.getFragments()::add);
+        } catch (IOException e) {
+            log.error("Lucene vector search failed: {}", e.getMessage(), e);
+        }
+
+        result.setNbResults(result.getFragments().size());
+        return result;
+    }
+
+    @Override
+    public boolean isSearchStoreEmpty() throws Exception {
+        return luceneConfig.isIndexEmpty();
+    }
+
+    private Query buildFilterQuery(String category, String author) throws Exception {
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        boolean hasFilter = false;
+
+        if (StringUtils.isNotBlank(category)) {
+            builder.add(parseFilter(IndexConstants.INDEX_KEY_CATEGORIE, category), BooleanClause.Occur.MUST);
+            hasFilter = true;
+        }
+        if (StringUtils.isNotBlank(author)) {
+            builder.add(parseFilter(IndexConstants.INDEX_KEY_AUTEUR, author), BooleanClause.Occur.MUST);
+            hasFilter = true;
+        }
+
+        return hasFilter ? builder.build() : new MatchAllDocsQuery();
+    }
+
+    private Query parseFilter(String field, String value) throws Exception {
+        QueryParser parser = new QueryParser(field, luceneConfig.getDocumentsAnalyzer());
+        parser.setDefaultOperator(QueryParser.Operator.AND);
+        return parser.parse(QueryParser.escape(value.trim()));
+    }
+
+    private boolean matchesDateRange(String indexedDate, LocalDate dateFrom, LocalDate dateTo) {
+        if (dateFrom == null && dateTo == null) {
+            return true;
+        }
+        if (StringUtils.isBlank(indexedDate)) {
+            return false;
+        }
+
+        try {
+            LocalDate documentDate = LocalDateTime.parse(indexedDate.trim(), INDEX_DATE_FORMATTER).toLocalDate();
+            if (dateFrom != null && documentDate.isBefore(dateFrom)) {
+                return false;
+            }
+            return dateTo == null || !documentDate.isAfter(dateTo);
+        } catch (DateTimeParseException ignored) {
+            return false;
+        }
+    }
+
+    private String buildFragment(String content) {
+        if (StringUtils.isBlank(content)) {
+            return "";
+        }
+        String normalized = StringUtils.normalizeSpace(content);
+        return normalized.length() <= 280 ? normalized : normalized.substring(0, 280) + "...";
+    }
+
+    private boolean shouldSkipVectorSearch(String queryText, SearchRequestDTO request) {
+        if (hasRestrictiveFilters(request)) {
+            return false;
+        }
+        return !isQueryStrongEnough(queryText);
+    }
+
+    private boolean hasRestrictiveFilters(SearchRequestDTO request) {
+        return StringUtils.isNotBlank(request.getCategory())
+                || StringUtils.isNotBlank(request.getAuthor())
+                || request.getDateFrom() != null
+                || request.getDateTo() != null;
+    }
+
+    private boolean isQueryStrongEnough(String queryText) {
+        if (StringUtils.isBlank(queryText)) {
+            return false;
+        }
+        String normalized = queryText.toLowerCase(Locale.ROOT).trim();
+        String compact = normalized.replaceAll("[^\\p{L}\\p{N}]+", "");
+        if (compact.length() < minQueryLength) {
+            return false;
+        }
+        long distinctChars = compact.chars().distinct().count();
+        return distinctChars >= Math.min(3, compact.length());
+    }
+
+}

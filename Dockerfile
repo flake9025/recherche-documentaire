@@ -1,17 +1,14 @@
 # Build du jar Spring Boot dans une image Maven avec JDK 25.
 FROM maven:3.9.11-eclipse-temurin-25 AS build
 WORKDIR /workspace
-ARG MAVEN_PROFILES=all-engines
 
 # On copie le workspace multi-modules necessaire au build de la webapp Spring Boot.
 COPY . .
 
 # Le packaging du conteneur ne rejoue pas les tests, deja executes en CI.
-RUN if [ -n "$MAVEN_PROFILES" ]; then \
-      mvn -B -pl recherche-documentaire-webapp-demo -am -P"$MAVEN_PROFILES" -DskipTests package; \
-    else \
-      mvn -B -pl recherche-documentaire-webapp-demo -am -DskipTests package; \
-    fi
+# La webapp embarque toujours l'ensemble des marketplaces (parser, storage, engine) ;
+# la selection des moteurs/parsers/stockages se fait au runtime via la configuration.
+RUN mvn -B -pl recherche-documentaire-webapp-demo -am -DskipTests package
 
 # Extraction des couches du jar en etape intermediaire.
 # Les dependances (rarement modifiees) et le code applicatif

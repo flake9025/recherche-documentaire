@@ -9,5 +9,6 @@ public class IndexConstants {
     public static final String INDEX_KEY_FICHIER = "FICHIER";
     public static final String INDEX_KEY_DATE_DEPOT = "DATE_DEPOT";
     public static final String INDEX_KEY_CONTENT = "CONTENT";
+    public static final String INDEX_KEY_CHUNK_INDEX = "CHUNK_INDEX";
 }
 
