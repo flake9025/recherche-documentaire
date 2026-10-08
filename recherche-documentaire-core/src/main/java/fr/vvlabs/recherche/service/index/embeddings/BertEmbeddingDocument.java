@@ -76,7 +76,10 @@ public record BertEmbeddingDocument(
      * @return identifiant compose
      */
     public static long pointId(Long documentId, int chunkIndex) {
-        return documentId * POINT_ID_FACTOR + chunkIndex;
+        if (documentId == null || documentId <= 0 || chunkIndex < 0 || chunkIndex >= POINT_ID_FACTOR) {
+            throw new IllegalArgumentException("Invalid document ID or chunk index (maximum 10000 chunks per document)");
+        }
+        return Math.addExact(Math.multiplyExact(documentId, POINT_ID_FACTOR), chunkIndex);
     }
 
     /**

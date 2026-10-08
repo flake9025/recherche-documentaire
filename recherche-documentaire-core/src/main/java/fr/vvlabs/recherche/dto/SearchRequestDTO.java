@@ -9,6 +9,11 @@ import java.time.LocalDate;
  */
 @Data
 public class SearchRequestDTO {
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.Set<Long> allowedDocumentIds;
+
+    private boolean summarize;
+    private String aiModel;
     private String query;
     private String category;
     private String author;

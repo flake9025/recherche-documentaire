@@ -78,6 +78,13 @@ public class LuceneVectorSearchService implements SearchService {
 
         float[] queryVector = bertEmbeddingsService.generateEmbedding(queryText);
         Query filterQuery = buildFilterQuery(effectiveRequest.getCategory(), effectiveRequest.getAuthor());
+        if (effectiveRequest.getAllowedDocumentIds() != null) {
+            filterQuery = new BooleanQuery.Builder().add(filterQuery, BooleanClause.Occur.FILTER)
+                    .add(new org.apache.lucene.search.TermInSetQuery(IndexConstants.INDEX_KEY_ID,
+                            effectiveRequest.getAllowedDocumentIds().stream()
+                                    .map(id -> new org.apache.lucene.util.BytesRef(id.toString())).toList()),
+                            BooleanClause.Occur.FILTER).build();
+        }
 
         try (IndexReader reader = DirectoryReader.open(luceneConfig.getDocumentsIndex())) {
             IndexSearcher searcher = new IndexSearcher(reader);
@@ -86,10 +93,9 @@ public class LuceneVectorSearchService implements SearchService {
             // on sur-echantillonne les candidats KNN pour ne pas manquer de documents
             // distincts quand les meilleurs chunks proviennent d'un meme document.
             int candidateCount = Math.max(k, k * Math.max(candidateMultiplier, 1));
-            TopDocs topDocs = searcher.search(
-                    new KnnFloatVectorQuery(VECTOR_FIELD, queryVector, candidateCount, filterQuery),
-                    candidateCount
-            );
+            TopDocs topDocs = queryVector.length == 0
+                    ? searcher.search(filterQuery, candidateCount)
+                    : searcher.search(new KnnFloatVectorQuery(VECTOR_FIELD, queryVector, candidateCount, filterQuery), candidateCount);
 
             StoredFields storedFields = searcher.storedFields();
             // Regroupement best-chunk par document: on garde le meilleur score par ID.

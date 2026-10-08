@@ -30,6 +30,9 @@ jobs:
       - name: Build and test with Maven
         run: mvn -B verify
 
+      - name: Test benchmark guards
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
   docker_variants:
     runs-on: ubuntu-latest
     needs: build_test
@@ -43,11 +46,18 @@ jobs:
           - lucene-vector
           - faiss
           - qdrant
+          - qdrant-cluster
           - milvus
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Generate isolated bootstrap password
+        run: |
+          password="$(openssl rand -hex 24)"
+          echo "::add-mask::$password"
+          echo "APP_BOOTSTRAP_PASSWORD=$password" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -145,6 +155,23 @@ jobs:
           docker compose -f docker-compose.qdrant.yml logs --no-color
           exit 1
 
+      - name: Start three-node Qdrant stack
+        if: matrix.scenario == 'qdrant-cluster'
+        run: docker compose -f docker-compose.qdrant-cluster.yml --profile benchmark up -d --build
+
+      - name: Smoke test three-node Qdrant stack
+        if: matrix.scenario == 'qdrant-cluster'
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8085/actuator/health; then
+              python3 scripts/benchmark-qdrant.py --points 600 --dimensions 16 --replicas 2 --workers 1,4 --requests 8
+              exit $?
+            fi
+            sleep 5
+          done
+          docker compose -f docker-compose.qdrant-cluster.yml logs --no-color
+          exit 1
+
       - name: Start Milvus stack
         if: matrix.scenario == 'milvus'
         run: docker compose -f docker-compose.milvus.yml up -d --build
@@ -169,6 +196,14 @@ jobs:
           docker compose -f docker-compose.milvus.yml logs --no-color
           exit 1
 
+      - name: Verify user isolation on every engine
+        run: |
+          url=http://localhost:8080
+          if [[ '${{ matrix.scenario }}' == 'qdrant-cluster' ]]; then
+            url=http://localhost:8085
+          fi
+          LOAD_PASSWORD="$APP_BOOTSTRAP_PASSWORD" python3 scripts/smoke-multiuser.py --url "$url" --write-synthetic-documents
+
       - name: Dump Docker state on failure
         if: failure()
         run: |
@@ -177,6 +212,7 @@ jobs:
           docker compose -f docker-compose.lucene-vector.yml logs --no-color || true
           docker compose -f docker-compose.faiss.yml logs --no-color || true
           docker compose -f docker-compose.qdrant.yml logs --no-color || true
+          docker compose -f docker-compose.qdrant-cluster.yml logs --no-color || true
           docker compose -f docker-compose.milvus.yml logs --no-color || true
 
       - name: Cleanup Docker resources
@@ -186,6 +222,7 @@ jobs:
           docker compose -f docker-compose.lucene-vector.yml down -v || true
           docker compose -f docker-compose.faiss.yml down -v || true
           docker compose -f docker-compose.qdrant.yml down -v || true
+          docker compose -f docker-compose.qdrant-cluster.yml --profile benchmark down -v || true
           docker compose -f docker-compose.milvus.yml down -v || true
 
   docker_image:

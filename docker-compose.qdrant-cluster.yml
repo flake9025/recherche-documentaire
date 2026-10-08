@@ -1,0 +1,131 @@
+# Variante independante : trois noeuds Qdrant, six shards, deux copies de chaque shard.
+# Les ports et volumes sont distincts de la variante mono-noeud.
+# docker compose -f docker-compose.qdrant-cluster.yml --profile benchmark up --build
+
+x-qdrant: &qdrant
+  image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+  environment:
+    QDRANT__CLUSTER__ENABLED: "true"
+  cpus: ${QDRANT_CPU_LIMIT:-1.0}
+  mem_limit: ${QDRANT_MEMORY_LIMIT:-1g}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: recherche_documentaire
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - cluster-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recherche_documentaire"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  qdrant:
+    <<: *qdrant
+    command: ["./qdrant", "--uri", "http://qdrant:6335"]
+    ports:
+      - "127.0.0.1:6343:6333"
+    volumes:
+      - qdrant-1-storage:/qdrant/storage
+
+  qdrant-2:
+    <<: *qdrant
+    command: ["./qdrant", "--bootstrap", "http://qdrant:6335", "--uri", "http://qdrant-2:6335"]
+    ports:
+      - "127.0.0.1:6344:6333"
+    volumes:
+      - qdrant-2-storage:/qdrant/storage
+    depends_on:
+      - qdrant
+
+  qdrant-3:
+    <<: *qdrant
+    command: ["./qdrant", "--bootstrap", "http://qdrant:6335", "--uri", "http://qdrant-3:6335"]
+    ports:
+      - "127.0.0.1:6345:6333"
+    volumes:
+      - qdrant-3-storage:/qdrant/storage
+    depends_on:
+      - qdrant
+
+  qdrant-gateway:
+    image: nginx:1.28-alpine
+    ports:
+      - "127.0.0.1:6342:80"
+    volumes:
+      - ./config/qdrant-gateway.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - qdrant
+      - qdrant-2
+      - qdrant-3
+    healthcheck:
+      # Attendre que les trois peers soient connus avant de creer les collections applicatives.
+      test: ["CMD-SHELL", "wget -qO- -T 2 http://127.0.0.1/cluster | grep -q 'http://qdrant-2:6335' && wget -qO- -T 2 http://127.0.0.1/cluster | grep -q 'http://qdrant-3:6335'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  qdrant-baseline:
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    profiles: ["benchmark"]
+    cpus: ${QDRANT_CPU_LIMIT:-1.0}
+    mem_limit: ${QDRANT_MEMORY_LIMIT:-1g}
+    ports:
+      - "127.0.0.1:6346:6333"
+    volumes:
+      - qdrant-baseline-storage:/qdrant/storage
+
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:8085:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      SPRING_PROFILES_ACTIVE: bert
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/recherche_documentaire
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      APP_BOOTSTRAP_PASSWORD: ${APP_BOOTSTRAP_PASSWORD:?Definir APP_BOOTSTRAP_PASSWORD pour initialiser les comptes}
+      APP_DEMO_USERS_ENABLED: ${APP_DEMO_USERS_ENABLED:-true}
+      APP_COOKIE_SECURE: ${APP_COOKIE_SECURE:-false}
+      APP_AI_ENABLED: ${APP_AI_ENABLED:-false}
+      APP_AI_OLLAMA_URL: ${APP_AI_OLLAMA_URL:-http://host.docker.internal:11434}
+      APP_AI_OLLAMA_MODEL: ${APP_AI_OLLAMA_MODEL:-mistral}
+      APP_AI_MISTRAL_URL: ${APP_AI_MISTRAL_URL:-http://host.docker.internal:8000/v1}
+      APP_AI_MISTRAL_MODEL: ${APP_AI_MISTRAL_MODEL:-mistral}
+      APP_AI_MISTRAL_API_KEY: ${APP_AI_MISTRAL_API_KEY:-}
+      APP_EMBEDDINGS_STORE_DEFAULT: qdrant
+      APP_EMBEDDINGS_STORE_QDRANT_ENABLED: "true"
+      APP_EMBEDDINGS_STORE_QDRANT_BASE_URL: http://qdrant-gateway
+      APP_EMBEDDINGS_STORE_QDRANT_COLLECTION: ${QDRANT_COLLECTION:-document-embeddings-cluster}
+      APP_EMBEDDINGS_STORE_QDRANT_SHARD_NUMBER: ${QDRANT_SHARD_NUMBER:-6}
+      APP_EMBEDDINGS_STORE_QDRANT_REPLICATION_FACTOR: ${QDRANT_REPLICATION_FACTOR:-2}
+      APP_EMBEDDINGS_STORE_QDRANT_WRITE_CONSISTENCY_FACTOR: ${QDRANT_WRITE_CONSISTENCY_FACTOR:-1}
+      APP_EMBEDDINGS_SEARCH_CANDIDATE_LIMIT: ${APP_EMBEDDINGS_SEARCH_CANDIDATE_LIMIT:-200}
+    volumes:
+      - cluster-documents:/app/storage
+      - cluster-suggest:/app/lucene-suggest
+      - cluster-djl-cache:/root/.djl.ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant-gateway:
+        condition: service_healthy
+
+volumes:
+  cluster-postgres-data:
+  qdrant-1-storage:
+  qdrant-2-storage:
+  qdrant-3-storage:
+  qdrant-baseline-storage:
+  cluster-documents:
+  cluster-suggest:
+  cluster-djl-cache:

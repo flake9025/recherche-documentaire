@@ -32,23 +32,32 @@ public class TextChunker {
     private final int maxTokens;
     private final int overlapTokens;
 
+    public TextChunker(BertEmbeddingsService service, boolean enabled, int maxTokens, int overlapTokens) {
+        this(service, enabled, maxTokens, overlapTokens, 256);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
     public TextChunker(
             BertEmbeddingsService bertEmbeddingsService,
             @Value("${app.embeddings.chunk.enabled:true}") boolean enabled,
-            @Value("${app.embeddings.chunk.max-tokens:256}") int maxTokens,
-            @Value("${app.embeddings.chunk.overlap-tokens:32}") int overlapTokens
+            @Value("${app.embeddings.chunk.max-tokens:254}") int maxTokens,
+            @Value("${app.embeddings.chunk.overlap-tokens:32}") int overlapTokens,
+            @Value("${app.embeddings.model-max-tokens:256}") int modelMaxTokens
     ) {
         this.bertEmbeddingsService = bertEmbeddingsService;
         this.enabled = enabled;
-        this.maxTokens = Math.max(1, maxTokens);
-        this.overlapTokens = Math.max(0, Math.min(overlapTokens, this.maxTokens - 1));
+        if (maxTokens < 1 || (enabled && maxTokens > modelMaxTokens - 2) || overlapTokens < 0 || overlapTokens >= maxTokens) {
+            throw new IllegalArgumentException("Chunk tokens must fit the model window minus two special tokens; overlap must be in [0, maxTokens)");
+        }
+        this.maxTokens = maxTokens;
+        this.overlapTokens = overlapTokens;
     }
 
     /**
      * Decoupe le contenu en passages exploitables pour l'embedding.
      *
-     * <p>Si le chunking est desactive, si le texte est vide, ou si le tokenizer n'est
-     * pas disponible, le texte complet est retourne comme un unique chunk.</p>
+     * <p>Un tokenizer indisponible interrompt l'indexation plutot que de tronquer
+     * silencieusement le document.</p>
      *
      * @param text contenu a decouper
      * @return liste ordonnee de chunks (jamais vide si le texte n'est pas vide)
@@ -62,13 +71,7 @@ public class TextChunker {
             return List.of(new TextChunk(0, 1, normalized));
         }
 
-        CharSpan[] spans;
-        try {
-            spans = bertEmbeddingsService.encodeCharSpans(normalized);
-        } catch (RuntimeException e) {
-            log.warn("Token-based chunking unavailable, indexing text as a single chunk: {}", e.getMessage());
-            return List.of(new TextChunk(0, 1, normalized));
-        }
+        CharSpan[] spans = bertEmbeddingsService.encodeCharSpans(normalized);
 
         // Les tokens speciaux ou non alignes sur des caracteres exposent un span null:
         // on ne conserve que les tokens porteurs d'une position dans le texte.
@@ -80,40 +83,45 @@ public class TextChunker {
         }
 
         int tokenCount = tokenSpans.size();
-        if (tokenCount <= maxTokens) {
+        if (tokenCount == 0) {
+            throw new IllegalStateException("Tokenizer returned no offsets for non-empty content");
+        }
+        if (spans.length <= maxTokens) {
             return List.of(new TextChunk(0, 1, normalized));
         }
 
-        // Fenetre glissante: on avance de (maxTokens - overlapTokens) tokens a chaque pas.
-        int step = maxTokens - overlapTokens;
-        List<int[]> windows = new ArrayList<>();
-        for (int start = 0; start < tokenCount; start += step) {
+        List<String> windows = new ArrayList<>();
+        for (int start = 0; start < tokenCount;) {
             int end = Math.min(start + maxTokens, tokenCount);
-            int charStart = tokenSpans.get(start).getStart();
-            int charEnd = tokenSpans.get(end - 1).getEnd();
-            windows.add(new int[]{charStart, charEnd});
+            int charStart = start == 0 ? 0 : tokenSpans.get(start).getStart();
+            String chunkText;
+            while (true) {
+                int charEnd = end == tokenCount ? normalized.length() : tokenSpans.get(end - 1).getEnd();
+                chunkText = normalized.substring(charStart, charEnd).strip();
+                int encodedTokens = bertEmbeddingsService.encodeCharSpans(chunkText).length;
+                if (chunkText.isBlank() || encodedTokens == 0) {
+                    throw new IllegalStateException("Tokenizer produced an empty chunk for non-empty content");
+                }
+                if (encodedTokens <= maxTokens) {
+                    break;
+                }
+                // Un sous-mot en debut de passage peut se reencoder en plusieurs tokens.
+                end -= Math.max(1, encodedTokens - maxTokens);
+                if (end <= start) {
+                    throw new IllegalStateException("Chunk token budget cannot represent this text boundary");
+                }
+            }
+            windows.add(chunkText);
             if (end == tokenCount) {
                 break;
             }
+            start = Math.max(start + 1, end - overlapTokens);
         }
 
         int total = windows.size();
         List<TextChunk> chunks = new ArrayList<>(total);
         for (int i = 0; i < total; i++) {
-            int[] window = windows.get(i);
-            String chunkText = normalized.substring(window[0], window[1]).strip();
-            if (!chunkText.isBlank()) {
-                chunks.add(new TextChunk(i, total, chunkText));
-            }
-        }
-        // Renumerote proprement si des passages vides ont ete ecartes.
-        if (chunks.size() != total) {
-            int corrected = chunks.size();
-            List<TextChunk> renumbered = new ArrayList<>(corrected);
-            for (int i = 0; i < corrected; i++) {
-                renumbered.add(new TextChunk(i, corrected, chunks.get(i).text()));
-            }
-            return renumbered.isEmpty() ? List.of(new TextChunk(0, 1, normalized)) : renumbered;
+            chunks.add(new TextChunk(i, total, windows.get(i)));
         }
         return chunks;
     }

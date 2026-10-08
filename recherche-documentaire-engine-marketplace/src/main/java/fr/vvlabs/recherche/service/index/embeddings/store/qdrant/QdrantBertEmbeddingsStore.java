@@ -33,6 +33,9 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     private final boolean enabled;
     private final String collectionName;
     private final int batchSize;
+    private final int shardNumber;
+    private final int replicationFactor;
+    private final int writeConsistencyFactor;
 
     public QdrantBertEmbeddingsStore(
             RestClient.Builder restClientBuilder,
@@ -40,8 +43,15 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
             @Value("${app.embeddings.store.qdrant.api-key:}") String apiKey,
             @Value("${app.embeddings.store.qdrant.collection:document-embeddings}") String collectionName,
             @Value("${app.embeddings.store.qdrant.enabled:false}") boolean enabled,
-            @Value("${app.embeddings.store.qdrant.batch-size:128}") int batchSize
+            @Value("${app.embeddings.store.qdrant.batch-size:128}") int batchSize,
+            @Value("${app.embeddings.store.qdrant.shard-number:1}") int shardNumber,
+            @Value("${app.embeddings.store.qdrant.replication-factor:1}") int replicationFactor,
+            @Value("${app.embeddings.store.qdrant.write-consistency-factor:1}") int writeConsistencyFactor
     ) {
+        if (shardNumber < 1 || replicationFactor < 1 || writeConsistencyFactor < 1
+                || writeConsistencyFactor > replicationFactor) {
+            throw new IllegalArgumentException("Qdrant shards/replicas must be positive; write consistency must be in [1, replicationFactor].");
+        }
         RestClient.Builder builder = restClientBuilder.baseUrl(baseUrl);
         if (apiKey != null && !apiKey.isBlank()) {
             builder = builder.defaultHeader("api-key", apiKey.trim());
@@ -50,6 +60,9 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
         this.enabled = enabled;
         this.collectionName = collectionName;
         this.batchSize = Math.max(batchSize, 1);
+        this.shardNumber = shardNumber;
+        this.replicationFactor = replicationFactor;
+        this.writeConsistencyFactor = writeConsistencyFactor;
     }
 
     @Override
@@ -68,11 +81,42 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     }
 
     @Override
+    public void replaceDocument(Long documentId, List<BertEmbeddingDocument> chunks) {
+        requireEnabled();
+        java.util.Objects.requireNonNull(documentId, "documentId");
+        java.util.Objects.requireNonNull(chunks, "chunks");
+        int vectorSize = 0;
+        for (BertEmbeddingDocument chunk : chunks) {
+            if (chunk == null || !documentId.equals(chunk.documentId())) {
+                throw new IllegalArgumentException("Replacement chunks must share their document ID.");
+            }
+            int size = validateEmbedding(chunk.embedding());
+            if (vectorSize != 0 && size != vectorSize) {
+                throw new IllegalArgumentException("Replacement chunks must share their vector size.");
+            }
+            vectorSize = size;
+            chunk.pointId();
+        }
+        if (!chunks.isEmpty()) {
+            ensureCollection(vectorSize);
+        }
+        deleteByDocumentId(documentId);
+        for (int offset = 0; offset < chunks.size(); offset += batchSize) {
+            upsertBatch(chunks.subList(offset, Math.min(offset + batchSize, chunks.size())));
+        }
+    }
+
+    @Override
     public void deleteByDocumentId(Long documentId) {
         requireEnabled();
-        if (documentId == null || !collectionExists()) {
+        if (documentId == null) {
             return;
         }
+        var params = findCollectionParams();
+        if (params.isEmpty()) {
+            return;
+        }
+        validateTopology(params.get());
         // Supprime tous les chunks du document via un filtre sur le payload documentId.
         QdrantFilter filter = new QdrantFilter(List.of(
                 new QdrantMatchCondition("documentId", new QdrantMatchLongValue(documentId))
@@ -129,6 +173,11 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     @Override
     public void clear() {
         requireEnabled();
+        var params = findCollectionParams();
+        if (params.isEmpty()) {
+            return;
+        }
+        validateTopology(params.get());
         try {
             restClient.delete()
                     .uri("/collections/{collection}", collectionName)
@@ -142,19 +191,25 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     @Override
     public void replaceAll(Collection<BertEmbeddingDocument> entities) {
         requireEnabled();
-        clear();
-        if (entities == null || entities.isEmpty()) {
-            return;
-        }
-
-        List<BertEmbeddingDocument> sanitized = entities.stream()
+        List<BertEmbeddingDocument> sanitized = entities == null ? List.of() : entities.stream()
                 .filter(document -> document != null && document.documentId() != null)
                 .toList();
+        int vectorSize = sanitized.isEmpty() ? 0 : validateEmbedding(sanitized.getFirst().embedding());
+        for (BertEmbeddingDocument document : sanitized) {
+            if (validateEmbedding(document.embedding()) != vectorSize) {
+                throw new IllegalArgumentException("Replacement chunks must share their vector size.");
+            }
+            document.pointId();
+        }
+        if (!sanitized.isEmpty()) {
+            findCollectionParams().ifPresent(params -> validateVectorConfiguration(params, vectorSize));
+        }
+        clear();
         if (sanitized.isEmpty()) {
             return;
         }
 
-        ensureCollection(validateEmbedding(sanitized.getFirst().embedding()));
+        ensureCollection(vectorSize);
         for (int i = 0; i < sanitized.size(); i += batchSize) {
             int end = Math.min(i + batchSize, sanitized.size());
             upsertBatch(sanitized.subList(i, end));
@@ -213,14 +268,55 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     }
 
     private void ensureCollection(int vectorSize) {
-        if (collectionExists()) {
+        var existing = findCollectionParams();
+        if (existing.isPresent()) {
+            validateVectorConfiguration(existing.get(), vectorSize);
             return;
         }
         restClient.put()
                 .uri("/collections/{collection}", collectionName)
-                .body(new QdrantCreateCollectionRequest(new QdrantVectorParams(vectorSize, "Cosine")))
+                .body(new QdrantCreateCollectionRequest(new QdrantVectorParams(vectorSize, "Cosine"),
+                        shardNumber, replicationFactor, writeConsistencyFactor))
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    private java.util.Optional<QdrantCollectionParams> findCollectionParams() {
+        QdrantCollectionResponse existing;
+        try {
+            existing = restClient.get()
+                    .uri("/collections/{collection}", collectionName)
+                    .retrieve()
+                    .body(QdrantCollectionResponse.class);
+        } catch (HttpClientErrorException.NotFound ignored) {
+            return java.util.Optional.empty();
+        }
+        if (existing == null || existing.result() == null || existing.result().config() == null
+                || existing.result().config().params() == null) {
+            throw new IllegalStateException("Qdrant returned no collection configuration for " + collectionName);
+        }
+        return java.util.Optional.of(existing.result().config().params());
+    }
+
+    private void validateVectorConfiguration(QdrantCollectionParams params, int vectorSize) {
+        validateTopology(params);
+        if (params.vectors() == null || params.vectors().size() != vectorSize
+                || !"Cosine".equals(params.vectors().distance())) {
+            throw collectionMismatch();
+        }
+    }
+
+    private void validateTopology(QdrantCollectionParams params) {
+        if (params.shardNumber() != shardNumber || params.replicationFactor() != replicationFactor
+                || params.writeConsistencyFactor() != writeConsistencyFactor) {
+            throw collectionMismatch();
+        }
+    }
+
+    private IllegalStateException collectionMismatch() {
+        return new IllegalStateException("Qdrant collection " + collectionName
+                + " differs from the configured vector size or shard/replica topology."
+                + " Use a new collection name and reindex, or explicitly migrate the existing collection.");
     }
 
     private void upsertBatch(List<BertEmbeddingDocument> documents) {
@@ -239,6 +335,9 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private QdrantFilter buildFilter(BertEmbeddingsStoreQuery query) {
         List<Object> must = new ArrayList<>();
+        if (query.allowedDocumentIds() != null) {
+            must.add(java.util.Map.of("key", "documentId", "match", java.util.Map.of("any", query.allowedDocumentIds())));
+        }
         if (query.category() != null && !query.category().isBlank()) {
             must.add(new QdrantMatchCondition("categoryNormalized", new QdrantMatchValue(normalize(query.category()))));
         }
@@ -326,15 +425,36 @@ public class QdrantBertEmbeddingsStore implements BertEmbeddingsStore {
     }
 
     private record QdrantCreateCollectionRequest(
-            QdrantVectorParams vectors
+            QdrantVectorParams vectors,
+            @JsonProperty("shard_number") int shardNumber,
+            @JsonProperty("replication_factor") int replicationFactor,
+            @JsonProperty("write_consistency_factor") int writeConsistencyFactor
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     private record QdrantVectorParams(
             int size,
             String distance
     ) {
     }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record QdrantCollectionResponse(QdrantCollectionInfo result) { }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record QdrantCollectionInfo(QdrantCollectionConfig config) { }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record QdrantCollectionConfig(QdrantCollectionParams params) { }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record QdrantCollectionParams(
+            QdrantVectorParams vectors,
+            @JsonProperty("shard_number") int shardNumber,
+            @JsonProperty("replication_factor") int replicationFactor,
+            @JsonProperty("write_consistency_factor") int writeConsistencyFactor
+    ) { }
 
     private record QdrantUpsertRequest(
             List<QdrantPoint> points

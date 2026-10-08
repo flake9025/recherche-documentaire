@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration des utilisateurs</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="panel">
+            <h1>Administration des utilisateurs</h1>
+            <p><span id="currentUser"></span> <a href="/">Documents</a>
+                <button id="logoutBtn" class="btn btn-ghost" type="button">Deconnexion</button></p>
+            <p id="adminError" role="alert"></p>
+            <table>
+                <thead><tr><th>ID</th><th>Identifiant</th><th>Nom affiche</th><th>Role</th><th>Responsable</th><th>Actif</th><th>Actions</th></tr></thead>
+                <tbody id="usersTable"></tbody>
+            </table>
+            <h2 id="userFormTitle">Ajouter un utilisateur</h2>
+            <form id="userForm">
+                <input type="hidden" name="id">
+                <label class="control">Identifiant
+                    <input class="search-box" name="username" required pattern="[a-z0-9][a-z0-9._-]{0,79}" maxlength="80">
+                </label>
+                <label class="control">Nom affiche
+                    <input class="search-box" name="displayName" required maxlength="120">
+                </label>
+                <label class="control">Mot de passe (12 caracteres minimum ; vide en modification pour le conserver)
+                    <input class="search-box" type="password" name="password" autocomplete="new-password" minlength="12" maxlength="72">
+                </label>
+                <label class="control">Role
+                    <select class="select-box" name="role">
+                        <option value="USER">Utilisateur</option>
+                        <option value="MANAGER">Responsable</option>
+                        <option value="ADMIN">Administrateur</option>
+                    </select>
+                </label>
+                <label class="control">Responsable
+                    <select class="select-box" name="managerId"></select>
+                </label>
+                <label><input type="checkbox" name="enabled" checked>Compte actif</label>
+                <div class="btn-row">
+                    <button class="btn" type="submit">Enregistrer</button>
+                    <button class="btn btn-ghost" id="resetUser" type="button">Nouvel utilisateur</button>
+                </div>
+            </form>
+        </section>
+    </main>
+    <script src="auth.js"></script>
+    <script src="admin.js"></script>
+</body>
+</html>

@@ -57,7 +57,7 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
 
     @Override
     @Transactional
-    public void addDocumentToDocumentIndex(DocumentDTO documentDTO, String data) {
+    public synchronized void addDocumentToDocumentIndex(DocumentDTO documentDTO, String data) {
         log.info("Upsert doc {} in embeddings store", documentDTO.getId());
 
         // Un embedding est un vecteur de flottants qui represente le sens global
@@ -69,25 +69,22 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         // stocke comme une entree distincte, pour ne pas perdre le contenu au-dela de
         // la limite de tokens et affiner la pertinence par passage.
         BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
-        // Purge des anciens chunks avant reindexation (le nombre de chunks peut diminuer).
-        store.deleteByDocumentId(documentDTO.getId());
-
-        List<TextChunk> chunks = textChunker.chunk(data);
+        // Decouper le texte final (metadonnees incluses), pas ajouter un prefixe apres le decoupage.
+        List<TextChunk> chunks = textChunker.chunk(bertEmbeddingsService.buildIndexText(
+                documentDTO.getTitre(), documentDTO.getAuteur(), documentDTO.getCategorie(),
+                documentDTO.getNomFichier(), data));
         if (chunks.isEmpty()) {
             // Document sans contenu exploitable: on indexe tout de meme les metadonnees.
             chunks = List.of(new TextChunk(0, 1, ""));
         }
 
         int chunkCount = chunks.size();
+        if (chunkCount > BertEmbeddingDocument.POINT_ID_FACTOR) {
+            throw new IllegalArgumentException("Document exceeds the maximum of 10000 chunks");
+        }
+        List<BertEmbeddingDocument> prepared = new ArrayList<>(chunkCount);
         for (TextChunk chunk : chunks) {
-            String indexedText = bertEmbeddingsService.buildIndexText(
-                    documentDTO.getTitre(),
-                    documentDTO.getAuteur(),
-                    documentDTO.getCategorie(),
-                    documentDTO.getNomFichier(),
-                    chunk.text()
-            );
-            float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
+            float[] vector = bertEmbeddingsService.generateEmbedding(chunk.text());
 
             BertEmbeddingDocument document = new BertEmbeddingDocument(
                     documentDTO.getId(),
@@ -101,8 +98,10 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
                     chunk.text(),
                     vector
             );
-            store.upsert(document);
+            prepared.add(document);
         }
+        // Ne purger l'ancien index qu'une fois tous les embeddings generes avec succes.
+        store.replaceDocument(documentDTO.getId(), prepared);
     }
 
     @Override
@@ -157,7 +156,7 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
     }
 
     @Override
-    public void saveDocumentIndexToDatabase() throws Exception {
+    public synchronized void saveDocumentIndexToDatabase() throws Exception {
         if (!useDatabase) {
             log.debug("Indexer Database disabled, save skipped");
             return;

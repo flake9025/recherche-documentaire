@@ -8,3 +8,5 @@ target/
 /deploy/
 /monitoring/
 /tesseract-ocr/
+__pycache__/
+*.pyc

@@ -27,6 +27,8 @@ import java.util.List;
 public class AutocompleteController {
 
     private final LuceneAutocompleteService luceneAutocompleteService;
+    private final fr.vvlabs.recherche.service.document.DocumentService documents;
+    private final fr.vvlabs.recherche.service.document.DocumentAccessService access;
 
     /**
      * Retourne des suggestions d'auteurs.
@@ -44,11 +46,21 @@ public class AutocompleteController {
             @Parameter(description = "Nombre maximum de resultats (par defaut: 10)")
             @RequestParam(defaultValue = "10") int limit
     ) throws IOException {
-        if (luceneAutocompleteService.isSuggestIndexEmpty()) {
-            log.info("Suggest index is empty, building from existing documents");
-            buildAuthorSuggestIndex();
+        if (query.trim().length() < 2 || limit < 1 || limit > 100) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Prefixe >= 2 caracteres et limite entre 1 et 100");
         }
-        return luceneAutocompleteService.suggest(query, limit);
+        String prefix = query.trim().toLowerCase(java.util.Locale.ROOT);
+        return documents.findByIds(access.visibleDocumentIds()).stream()
+                .map(fr.vvlabs.recherche.dto.DocumentDTO::getAuteur)
+                .filter(author -> author != null && author.toLowerCase(java.util.Locale.ROOT).startsWith(prefix))
+                .distinct().sorted(String.CASE_INSENSITIVE_ORDER).limit(limit)
+                .map(author -> {
+                    var suggestion = new LuceneAutocompleteService.AuthorSuggestion();
+                    suggestion.setAuthor(author);
+                    suggestion.setWeight(1L);
+                    return suggestion;
+                }).toList();
     }
 
     /**

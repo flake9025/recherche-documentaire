@@ -18,6 +18,7 @@ public record FaissRemoteSearchRequest(
         String author,
         LocalDate dateFrom,
         LocalDate dateTo,
-        int limit
+        int limit,
+        java.util.Set<Long> allowedDocumentIds
 ) {
 }

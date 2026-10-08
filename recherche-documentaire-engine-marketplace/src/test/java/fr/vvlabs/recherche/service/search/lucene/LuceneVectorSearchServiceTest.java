@@ -36,6 +36,28 @@ class LuceneVectorSearchServiceTest {
     private BertEmbeddingsService bertEmbeddingsService;
 
     @Test
+    void searchFiltersBeforeKnnTopKSoUnauthorizedBestHitCannotHideAllowedHit() throws Exception {
+        try (var analyzer = new StandardAnalyzer(); var directory = new ByteBuffersDirectory()) {
+            addDocument(directory, analyzer, "1", "Rapport", "Alice", "note", "01/03/2026 10:00:00", "a.pdf", "secret", new float[]{1, 0});
+            addDocument(directory, analyzer, "2", "Rapport", "Bob", "note", "01/03/2026 10:00:00", "b.pdf", "autorise", new float[]{0, 1});
+            when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+            when(bertEmbeddingsService.generateEmbedding("rapport")).thenReturn(new float[]{1, 0});
+            var service = new LuceneVectorSearchService(luceneConfig, bertEmbeddingsService);
+            ReflectionTestUtils.setField(service, "maxResults", 1);
+            ReflectionTestUtils.setField(service, "candidateMultiplier", 1);
+            ReflectionTestUtils.setField(service, "minScore", 0.0f);
+            ReflectionTestUtils.setField(service, "minQueryLength", 3);
+            var request = new SearchRequestDTO();
+            request.setQuery("rapport");
+            request.setAllowedDocumentIds(java.util.Set.of(2L));
+            assertThat(service.search(request).getFragments()).extracting(fr.vvlabs.recherche.dto.SearchFragmentDTO::getId)
+                    .containsExactly("2");
+            request.setAllowedDocumentIds(java.util.Set.of());
+            assertThat(service.search(request).getFragments()).isEmpty();
+        }
+    }
+
+    @Test
     void search_returnsNearestVectorMatches() throws Exception {
         StandardAnalyzer analyzer = new StandardAnalyzer();
         ByteBuffersDirectory directory = new ByteBuffersDirectory();

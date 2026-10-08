@@ -26,6 +26,23 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class QdrantBertEmbeddingsStoreTest {
 
     @Test
+    void searchPushesAuthorizationFilterIntoQdrant() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = newStore(builder, true);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points/search"))
+                .andExpect(content().json("""
+                        {"filter":{"must":[{"key":"documentId","match":{"any":[10,20]}}]}}
+                        """, false))
+                .andRespond(withSuccess("{\"result\":[]}", MediaType.APPLICATION_JSON));
+        assertThat(store.search(new BertEmbeddingsStoreQuery(new float[]{1, 0}, null, null, null, null, 1,
+                java.util.Set.of(10L, 20L)))).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void getType_returnsQdrant() {
         assertThat(newStore(RestClient.builder(), true).getType()).isEqualTo(BertEmbeddingsStoreType.QDRANT);
     }
@@ -46,7 +63,10 @@ class QdrantBertEmbeddingsStoreTest {
                           "vectors": {
                             "size": 2,
                             "distance": "Cosine"
-                          }
+                          },
+                          "shard_number": 1,
+                          "replication_factor": 1,
+                          "write_consistency_factor": 1
                         }
                         """, true))
                 .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
@@ -229,6 +249,166 @@ class QdrantBertEmbeddingsStoreTest {
                 .hasMessageContaining("Qdrant store is disabled");
     }
 
+    @Test
+    void upsertCreatesConfiguredDistributedTopology() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new QdrantBertEmbeddingsStore(builder, "http://localhost:6333", "", "test-embeddings",
+                true, 64, 6, 2, 1);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(content().json("""
+                        {"vectors":{"size":2,"distance":"Cosine"},"shard_number":6,
+                         "replication_factor":2,"write_consistency_factor":1}
+                        """, true))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points?wait=true"))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        store.upsert(new BertEmbeddingDocument(1L, "Title", "Author", "RAPPORT", "a.pdf",
+                null, "text", new float[]{1, 0}));
+        server.verify();
+    }
+
+    @Test
+    void upsertRefusesMismatchedExistingTopologyWithoutDeletingData() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new QdrantBertEmbeddingsStore(builder, "http://localhost:6333", "", "test-embeddings",
+                true, 64, 6, 2, 1);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("""
+                        {"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"},
+                          "shard_number":1,"replication_factor":1,"write_consistency_factor":1}}}}
+                        """, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> store.upsert(new BertEmbeddingDocument(1L, "Title", "Author", "RAPPORT", "a.pdf",
+                null, "text", new float[]{1, 0}))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("new collection name");
+        server.verify();
+    }
+
+    @Test
+    void upsertAcceptsMatchingExistingTopologyWithoutRecreation() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new QdrantBertEmbeddingsStore(builder, "http://localhost:6333", "", "test-embeddings",
+                true, 64, 6, 2, 1);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("""
+                        {"result":{"status":"green","config":{"params":{"vectors":{"size":2,"distance":"Cosine",
+                          "on_disk":false},"shard_number":6,"replication_factor":2,"write_consistency_factor":1}}}}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points?wait=true"))
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        store.upsert(new BertEmbeddingDocument(1L, "Title", "Author", "RAPPORT", "a.pdf",
+                null, "text", new float[]{1, 0}));
+        server.verify();
+    }
+
+    @Test
+    void replaceDocumentValidatesTopologyBeforePurgingExistingChunks() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new QdrantBertEmbeddingsStore(builder, "http://localhost:6333", "", "test-embeddings",
+                true, 64, 6, 2, 1);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("""
+                        {"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"},
+                          "shard_number":1,"replication_factor":1,"write_consistency_factor":1}}}}
+                        """, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> store.replaceDocument(1L, List.of(
+                new BertEmbeddingDocument(1L, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "text", new float[]{1, 0}))))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("new collection name");
+        server.verify();
+    }
+
+    @Test
+    void replaceDocumentValidatesEveryVectorBeforeAnyRemoteMutation() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = newStore(builder, true);
+        assertThatThrownBy(() -> store.replaceDocument(1L, List.of(
+                new BertEmbeddingDocument(1L, 0, 2, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "text", new float[]{1, 0}),
+                new BertEmbeddingDocument(1L, 1, 2, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "text", new float[]{1}))))
+                .isInstanceOf(IllegalArgumentException.class);
+        server.verify();
+    }
+
+    @Test
+    void clearRefusesMismatchedTopologyWithoutDeletingTheCollection() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new QdrantBertEmbeddingsStore(builder, "http://localhost:6333", "", "test-embeddings",
+                true, 64, 6, 2, 1);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("""
+                        {"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"},
+                          "shard_number":1,"replication_factor":1,"write_consistency_factor":1}}}}
+                        """, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(store::clear).isInstanceOf(IllegalStateException.class);
+        server.verify();
+    }
+
+    @Test
+    void replaceAllRefusesMismatchedVectorSizeWithoutDeletingTheCollection() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = newStore(builder, true);
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess("""
+                        {"result":{"config":{"params":{"vectors":{"size":3,"distance":"Cosine"},
+                          "shard_number":1,"replication_factor":1,"write_consistency_factor":1}}}}
+                        """, MediaType.APPLICATION_JSON));
+        assertThatThrownBy(() -> store.replaceAll(List.of(
+                new BertEmbeddingDocument(1L, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "text", new float[]{1, 0}))))
+                .isInstanceOf(IllegalStateException.class);
+        server.verify();
+    }
+
+    @Test
+    void replaceDocumentWritesAllChunksInOneBatchAfterValidation() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = newStore(builder, true);
+        String configuration = """
+                {"result":{"config":{"params":{"vectors":{"size":2,"distance":"Cosine"},
+                  "shard_number":1,"replication_factor":1,"write_consistency_factor":1}}}}
+                """;
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess(configuration, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings"))
+                .andRespond(withSuccess(configuration, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points/delete?wait=true"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:6333/collections/test-embeddings/points?wait=true"))
+                .andExpect(method(HttpMethod.PUT))
+                .andExpect(content().json("""
+                        {"points":[{"id":10000},{"id":10001}]}
+                        """, false))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+        store.replaceDocument(1L, List.of(
+                new BertEmbeddingDocument(1L, 0, 2, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "first", new float[]{1, 0}),
+                new BertEmbeddingDocument(1L, 1, 2, "Title", "Author", "RAPPORT", "a.pdf",
+                        null, "last", new float[]{0, 1})));
+        server.verify();
+    }
+
+    @Test
+    void constructorRejectsInvalidTopology() {
+        assertThatThrownBy(() -> new QdrantBertEmbeddingsStore(RestClient.builder(), "http://localhost:6333", "",
+                "test-embeddings", true, 64, 0, 2, 1)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new QdrantBertEmbeddingsStore(RestClient.builder(), "http://localhost:6333", "",
+                "test-embeddings", true, 64, 6, 2, 3)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static QdrantBertEmbeddingsStore newStore(RestClient.Builder builder, boolean enabled) {
         return new QdrantBertEmbeddingsStore(
                 builder,
@@ -236,7 +416,10 @@ class QdrantBertEmbeddingsStoreTest {
                 "",
                 "test-embeddings",
                 enabled,
-                64
+                64,
+                1,
+                1,
+                1
         );
     }
 }

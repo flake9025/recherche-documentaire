@@ -47,6 +47,7 @@ class DocumentModel(BaseModel):
 
 
 class SearchRequest(BaseModel):
+    allowedDocumentIds: Optional[List[int]] = None
     queryVector: List[float]
     category: Optional[str] = None
     author: Optional[str] = None
@@ -207,14 +208,15 @@ def search(req: SearchRequest) -> SearchResponse:
 
         # limit <= 0 signifie "sans limite" (miroir de HashMapBertEmbeddingsStore)
         effective_limit = req.limit if req.limit > 0 else len(_docs)
-        has_filters = any([req.category, req.author, req.dateFrom, req.dateTo])
+        has_filters = req.allowedDocumentIds is not None or any([req.category, req.author, req.dateFrom, req.dateTo])
+        allowed_ids = None if req.allowedDocumentIds is None else set(req.allowedDocumentIds)
 
         if has_filters or _index is None:
             # Calcul brut sur les candidats filtrés
             candidates = [
                 (doc_id, doc)
                 for doc_id, doc in _docs.items()
-                if _matches_filters(doc, req)
+                if _matches_filters(doc, req) and (allowed_ids is None or doc["documentId"] in allowed_ids)
             ]
             q = np.array(req.queryVector, dtype=np.float32)
             scored = [

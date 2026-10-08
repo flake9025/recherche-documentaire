@@ -80,6 +80,7 @@ public class HashMapBertEmbeddingsStore implements BertEmbeddingsStore {
     public List<BertEmbeddingMatch> search(BertEmbeddingsStoreQuery query) {
         Comparator<BertEmbeddingMatch> comparator = Comparator.comparing(BertEmbeddingMatch::semanticScore).reversed();
         return documents.values().stream()
+                .filter(document -> query.allows(document.documentId()))
                 .filter(document -> matchesFilters(document, query.category(), query.author(), query.dateFrom(), query.dateTo()))
                 .map(document -> new BertEmbeddingMatch(document, cosineSimilarity(query.queryVector(), document.embedding())))
                 .sorted(comparator)

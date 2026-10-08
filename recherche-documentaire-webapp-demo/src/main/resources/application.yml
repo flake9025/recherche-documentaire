@@ -7,6 +7,15 @@
 # - ne changer qu'un bloc a la fois
 # - preferer `hashmap` + `pdfbox` pour les tests simples en local
 
+server:
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${APP_COOKIE_SECURE:false}
+
 spring:
   main:
     # Application web Spring MVC classique.
@@ -74,6 +83,29 @@ management:
         enabled: true
 
 app:
+  ai:
+    enabled: ${APP_AI_ENABLED:false}
+    max-concurrent: 2
+    timeout-seconds: 60
+    max-sources: 5
+    max-context-chars: 12000
+    max-output-tokens: 512
+    models:
+      ollama-mistral:
+        provider: OLLAMA
+        base-url: ${APP_AI_OLLAMA_URL:http://localhost:11434}
+        model: ${APP_AI_OLLAMA_MODEL:mistral}
+      mistral-local:
+        provider: OPENAI
+        # Serveur on-premise compatible OpenAI (vLLM, llama.cpp, etc.), pas l'API cloud Mistral.
+        base-url: ${APP_AI_MISTRAL_URL:http://localhost:8000/v1}
+        model: ${APP_AI_MISTRAL_MODEL:mistral}
+        api-key: ${APP_AI_MISTRAL_API_KEY:}
+  users:
+    # Obligatoire lors du premier demarrage sur une base sans comptes (12 caracteres minimum).
+    bootstrap-password: ${APP_BOOTSTRAP_PASSWORD:}
+    # Cree admin, carol, alice, bob, david, eve uniquement si la table est vide.
+    demo-enabled: ${APP_DEMO_USERS_ENABLED:true}
   indexer:
     # Moteur d'indexation principal.
     # Valeurs possibles :
@@ -116,6 +148,7 @@ app:
     # Modele Hugging Face utilise pour produire les embeddings.
     # Changer ce modele peut modifier les resultats et le temps de chargement.
     model-id: sentence-transformers/all-MiniLM-L6-v2
+    model-max-tokens: 256
     # Decoupage du contenu en chunks avant embedding (moteurs vectoriels).
     # Les modeles sentence-transformers tronquent silencieusement au-dela de leur
     # fenetre de tokens (~256 pour all-MiniLM-L6-v2). Le chunking embedde chaque
@@ -124,7 +157,7 @@ app:
       # Active le decoupage en chunks. Si false, le document est embedde en un seul vecteur.
       enabled: true
       # Taille de la fenetre en tokens (aligner sur la fenetre du modele).
-      max-tokens: 256
+      max-tokens: 254
       # Chevauchement en tokens entre deux chunks consecutifs (continuite du sens).
       overlap-tokens: 32
     store:
@@ -151,6 +184,10 @@ app:
         collection: document-embeddings
         # Taille des batches d'upsert/replaceAll vers Qdrant.
         batch-size: 128
+        # Topologie a la creation ; changer de nom de collection pour modifier le nombre de shards.
+        shard-number: 1
+        replication-factor: 1
+        write-consistency-factor: 1
       milvus:
         # Active l'appel au serveur Milvus distant.
         enabled: false

@@ -79,7 +79,9 @@ public class LuceneVectorIndexService implements IndexService<ByteBuffersDirecto
         // Le contenu est decoupe en chunks alignes sur la fenetre de tokens du modele.
         // Chaque chunk devient un document Lucene distinct portant son propre vecteur KNN,
         // tous partageant le meme terme ID (le delete-by-ID purge donc tous les chunks a la reindexation).
-        java.util.List<fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunk> chunks = textChunker.chunk(data);
+        java.util.List<fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunk> chunks = textChunker.chunk(
+                bertEmbeddingsService.buildIndexText(documentDTO.getTitre(), documentDTO.getAuteur(),
+                        documentDTO.getCategorie(), documentDTO.getNomFichier(), data));
         if (chunks.isEmpty()) {
             chunks = java.util.List.of(new fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunk(0, 1, ""));
         }
@@ -90,14 +92,7 @@ public class LuceneVectorIndexService implements IndexService<ByteBuffersDirecto
                 writer.deleteDocuments(new Term(INDEX_KEY_ID, documentDTO.getId().toString()));
 
                 for (fr.vvlabs.recherche.service.index.embeddings.chunk.TextChunk chunk : chunks) {
-                    String indexedText = bertEmbeddingsService.buildIndexText(
-                            documentDTO.getTitre(),
-                            documentDTO.getAuteur(),
-                            documentDTO.getCategorie(),
-                            documentDTO.getNomFichier(),
-                            chunk.text()
-                    );
-                    float[] vector = bertEmbeddingsService.generateEmbedding(indexedText);
+                    float[] vector = bertEmbeddingsService.generateEmbedding(chunk.text());
 
                     Document doc = new Document();
                     doc.add(new TextField(INDEX_KEY_ID, documentDTO.getId().toString(), Field.Store.YES));

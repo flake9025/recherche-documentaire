@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - Portail documentaire</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="panel">
+            <h1>Connexion au portail documentaire</h1>
+            <form id="loginForm">
+                <label class="control">Identifiant
+                    <input class="search-box" name="username" autocomplete="username" required maxlength="80">
+                </label>
+                <label class="control">Mot de passe
+                    <input class="search-box" type="password" name="password" autocomplete="current-password" required>
+                </label>
+                <p id="loginError" role="alert"></p>
+                <button class="btn" type="submit">Se connecter</button>
+            </form>
+        </section>
+    </main>
+    <script src="auth.js"></script>
+    <script src="login.js"></script>
+</body>
+</html>

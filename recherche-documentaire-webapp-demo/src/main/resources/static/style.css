@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
+[hidden] {
+    display: none !important;
+}
 
 :root {
     --blue-900: #0b2a6f;
@@ -1233,4 +1235,3 @@ body {
         gap: 10px;
     }
 }
-

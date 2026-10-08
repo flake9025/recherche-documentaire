@@ -29,6 +29,9 @@ public class BertEmbeddingsService {
     private ZooModel<String, float[]> model;
     private Predictor<String, float[]> predictor;
     private HuggingFaceTokenizer tokenizer;
+    private HuggingFaceTokenizer embeddingTokenizer;
+    @Value("${app.embeddings.model-max-tokens:256}")
+    private int modelMaxTokens = 256;
 
     public BertEmbeddingsService(@Value("${app.embeddings.model-id:sentence-transformers/all-MiniLM-L6-v2}") String modelId)
             throws ModelNotFoundException, MalformedModelException, IOException {
@@ -43,7 +46,7 @@ public class BertEmbeddingsService {
         return predictor != null;
     }
 
-    public float[] generateEmbedding(String text) {
+    public synchronized float[] generateEmbedding(String text) {
         String normalizedText = StringUtils.trimToEmpty(text);
         if (normalizedText.isBlank()) {
             return new float[0];
@@ -66,17 +69,39 @@ public class BertEmbeddingsService {
      * @param text texte a encoder
      * @return spans de caracteres par token (peut contenir des entrees nulles pour les tokens sans position)
      */
-    public CharSpan[] encodeCharSpans(String text) {
+    public synchronized CharSpan[] encodeCharSpans(String text) {
         String normalizedText = StringUtils.trimToEmpty(text);
         if (normalizedText.isBlank()) {
             return new CharSpan[0];
         }
         try {
-            ensureModelLoaded();
+            ensureTokenizerLoaded();
             // addSpecialTokens=false: on ne veut que les tokens de contenu, avec leurs offsets.
-            return tokenizer.encode(normalizedText, false, false).getCharTokenSpans();
-        } catch (ModelNotFoundException | MalformedModelException | IOException e) {
-            throw new IllegalStateException("Failed to load embedding model " + modelId, e);
+            CharSpan[] spans = tokenizer.encode(normalizedText, false, false).getCharTokenSpans();
+            int codePoints = normalizedText.codePointCount(0, normalizedText.length());
+            if (codePoints == normalizedText.length()) {
+                return spans;
+            }
+            // Les offsets natifs comptent les code points, substring() utilise des unites UTF-16.
+            int[] utf16Offsets = new int[codePoints + 1];
+            for (int index = 0, offset = 0; index < codePoints; index++) {
+                utf16Offsets[index] = offset;
+                offset += Character.charCount(normalizedText.codePointAt(offset));
+            }
+            utf16Offsets[codePoints] = normalizedText.length();
+            CharSpan[] converted = new CharSpan[spans.length];
+            for (int index = 0; index < spans.length; index++) {
+                CharSpan span = spans[index];
+                if (span != null && span.getStart() >= 0 && span.getEnd() >= span.getStart()) {
+                    if (span.getEnd() > codePoints) {
+                        throw new IllegalStateException("Tokenizer offsets exceed content length");
+                    }
+                    converted[index] = new CharSpan(utf16Offsets[span.getStart()], utf16Offsets[span.getEnd()]);
+                }
+            }
+            return converted;
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load tokenizer " + modelId, e);
         }
     }
 
@@ -117,7 +142,8 @@ public class BertEmbeddingsService {
 
         // DJL charge le modele Sentence-Transformers depuis Hugging Face et expose
         // un predictor qui transforme un texte libre en vecteur numerique.
-        HuggingFaceTokenizer huggingFaceTokenizer = HuggingFaceTokenizer.newInstance(modelId);
+        HuggingFaceTokenizer huggingFaceTokenizer = HuggingFaceTokenizer.builder().optTokenizerName(modelId)
+                .optTruncation(true).optPadding(false).optMaxLength(modelMaxTokens).build();
         TextEmbeddingTranslator translator = TextEmbeddingTranslator.builder(huggingFaceTokenizer).build();
         Criteria<String, float[]> criteria = Criteria.builder()
                 .setTypes(String.class, float[].class)
@@ -127,19 +153,31 @@ public class BertEmbeddingsService {
 
         this.model = criteria.loadModel();
         this.predictor = model.newPredictor();
-        // Le tokenizer est conserve pour le decoupage en chunks (offsets de caracteres),
-        // afin de partager exactement la meme tokenisation que l'embedding.
-        this.tokenizer = huggingFaceTokenizer;
+        this.embeddingTokenizer = huggingFaceTokenizer;
         log.info("Embeddings model loaded: {}", modelId);
     }
 
+    private void ensureTokenizerLoaded() throws IOException {
+        if (tokenizer == null) {
+            // Le tokenizer du modele peut tronquer par defaut : celui du chunker doit lire tout le document.
+            tokenizer = HuggingFaceTokenizer.builder().optTokenizerName(modelId)
+                    .optTruncation(false).optPadding(false).build();
+        }
+    }
+
     @PreDestroy
-    public void cleanup() throws IOException {
+    public synchronized void cleanup() throws IOException {
         if (predictor != null) {
             predictor.close();
         }
         if (model != null) {
             model.close();
+        }
+        if (tokenizer != null) {
+            tokenizer.close();
+        }
+        if (embeddingTokenizer != null) {
+            embeddingTokenizer.close();
         }
     }
 }

@@ -11,8 +11,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 
 class TextChunkerTest {
+    @org.junit.jupiter.api.io.TempDir
+    java.nio.file.Path temporaryDirectory;
 
     private final BertEmbeddingsService bertEmbeddingsService = Mockito.mock(BertEmbeddingsService.class);
+
+    @org.junit.jupiter.api.BeforeEach
+    void defaultTokenizer() {
+        Mockito.lenient().when(bertEmbeddingsService.encodeCharSpans(Mockito.anyString()))
+                .thenAnswer(invocation -> wordSpans(invocation.getArgument(0)));
+    }
 
     /**
      * Construit un CharSpan par "mot" separe par des espaces, comme le ferait un tokenizer
@@ -88,15 +96,111 @@ class TextChunkerTest {
     }
 
     @Test
-    void chunk_fallsBackToSingleChunkWhenTokenizerFails() {
+    void chunk_rejectsIndexingWhenTokenizerFails() {
         String text = "un deux trois quatre cinq six sept huit";
         when(bertEmbeddingsService.encodeCharSpans(text))
                 .thenThrow(new IllegalStateException("tokenizer indisponible"));
 
         TextChunker chunker = new TextChunker(bertEmbeddingsService, true, 4, 1);
-        List<TextChunk> chunks = chunker.chunk(text);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> chunker.chunk(text))
+                .isInstanceOf(IllegalStateException.class).hasMessage("tokenizer indisponible");
+    }
 
-        assertThat(chunks).hasSize(1);
-        assertThat(chunks.getFirst().text()).isEqualTo(text);
+    @Test
+    void chunk_coversTheEndOfALongDocumentWithinTheBudget() {
+        String text = java.util.stream.IntStream.range(0, 1200)
+                .mapToObj(i -> "mot" + i).collect(java.util.stream.Collectors.joining(" "));
+        when(bertEmbeddingsService.encodeCharSpans(text)).thenReturn(wordSpans(text));
+        var chunks = new TextChunker(bertEmbeddingsService, true, 254, 32).chunk(text);
+        assertThat(chunks).hasSizeGreaterThan(4);
+        assertThat(chunks.getLast().text()).endsWith("mot1199");
+        assertThat(chunks).allSatisfy(chunk -> assertThat(wordSpans(chunk.text()).length).isLessThanOrEqualTo(254));
+        for (int i = 0; i < 1200; i++) {
+            final String token = "mot" + i;
+            assertThat(chunks.stream().anyMatch(chunk -> java.util.Arrays.asList(chunk.text().split(" ")).contains(token))).isTrue();
+        }
+    }
+
+    @Test
+    void chunk_rejectsInvalidBudgetAndOverlap() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new TextChunker(bertEmbeddingsService, true, 256, 32))
+                .isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new TextChunker(bertEmbeddingsService, true, 4, 4))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void realTokenizerWithTruncationDisabledCoversLongContentAndRespectsEmbeddingWindow() throws Exception {
+        java.nio.file.Path tokenizerFile = temporaryDirectory.resolve("tokenizer.json");
+        java.nio.file.Files.writeString(tokenizerFile, """
+                {
+                  "version":"1.0",
+                  "truncation":{"direction":"Right","max_length":256,"strategy":"LongestFirst","stride":0},
+                  "padding":null,
+                  "added_tokens":[],
+                  "normalizer":null,
+                  "pre_tokenizer":{"type":"Whitespace"},
+                  "post_processor":null,
+                  "decoder":null,
+                  "model":{"type":"WordLevel","vocab":{"[UNK]":0,"mot":1,"fin":2},"unk_token":"[UNK]"}
+                }
+                """);
+        try (var tokenizer = ai.djl.huggingface.tokenizers.HuggingFaceTokenizer.builder()
+                .optTokenizerPath(tokenizerFile).optTruncation(false).optPadding(false).build()) {
+            String text = "mot ".repeat(1200) + "fin";
+            when(bertEmbeddingsService.encodeCharSpans(Mockito.anyString()))
+                    .thenAnswer(invocation -> tokenizer.encode(invocation.<String>getArgument(0), false, false).getCharTokenSpans());
+            var chunks = new TextChunker(bertEmbeddingsService, true, 254, 32).chunk(text);
+            assertThat(tokenizer.encode(text, false, false).getIds()).hasSize(1201);
+            assertThat(chunks.getLast().text()).endsWith("fin");
+            assertThat(chunks).allSatisfy(chunk -> assertThat(tokenizer.encode(chunk.text(), false, false).getIds().length)
+                    .isLessThanOrEqualTo(254));
+        }
+    }
+
+    @Test
+    void reencodedWordPiecesFitTheBudgetWithoutSkippingTokensWhenOverlapIsZero() throws Exception {
+        java.nio.file.Path tokenizerFile = temporaryDirectory.resolve("wordpiece.json");
+        java.nio.file.Files.writeString(tokenizerFile, """
+                {
+                  "version":"1.0","truncation":null,"padding":null,"added_tokens":[],
+                  "normalizer":null,"pre_tokenizer":{"type":"Whitespace"},"post_processor":null,
+                  "decoder":{"type":"WordPiece","prefix":"##","cleanup":true},
+                  "model":{"type":"WordPiece","vocab":{"[UNK]":0,"hello":1,"##ing":2,"world":3,"i":4,"##ng":5},
+                           "unk_token":"[UNK]","continuing_subword_prefix":"##","max_input_chars_per_word":100}
+                }
+                """);
+        try (var tokenizer = ai.djl.huggingface.tokenizers.HuggingFaceTokenizer.builder()
+                .optTokenizerPath(tokenizerFile).optTruncation(false).optPadding(false).build()) {
+            when(bertEmbeddingsService.encodeCharSpans(Mockito.anyString()))
+                    .thenAnswer(invocation -> tokenizer.encode(invocation.<String>getArgument(0), false, false).getCharTokenSpans());
+            String text = "helloing world helloing world helloing world";
+            var chunks = new TextChunker(bertEmbeddingsService, true, 4, 0).chunk(text);
+            assertThat(chunks).extracting(TextChunk::text)
+                    .containsExactly("helloing world hello", "ing world hello", "ing world");
+            assertThat(chunks).allSatisfy(chunk ->
+                    assertThat(tokenizer.encode(chunk.text(), false, false).getIds().length).isLessThanOrEqualTo(4));
+            assertThat(chunks.stream().map(TextChunk::text).collect(java.util.stream.Collectors.joining())).isEqualTo(text);
+        }
+    }
+
+    @Test
+    void nativeCodePointOffsetsAreConvertedToUtf16WithoutSplittingSurrogates() throws Exception {
+        java.nio.file.Path tokenizerFile = temporaryDirectory.resolve("unicode.json");
+        java.nio.file.Files.writeString(tokenizerFile, """
+                {
+                  "version":"1.0","truncation":null,"padding":null,"added_tokens":[],
+                  "normalizer":null,"pre_tokenizer":{"type":"Whitespace"},"post_processor":null,"decoder":null,
+                  "model":{"type":"WordLevel","vocab":{"[UNK]":0,"alpha":1,"beta":2},"unk_token":"[UNK]"}
+                }
+                """);
+        try (var tokenizer = ai.djl.huggingface.tokenizers.HuggingFaceTokenizer.builder()
+                .optTokenizerPath(tokenizerFile).optTruncation(false).optPadding(false).build()) {
+            var service = new BertEmbeddingsService("local-test");
+            org.springframework.test.util.ReflectionTestUtils.setField(service, "tokenizer", tokenizer);
+            var chunks = new TextChunker(service, true, 1, 0).chunk("\uD83D\uDE00 alpha beta");
+            assertThat(chunks).extracting(TextChunk::text).containsExactly("\uD83D\uDE00", "alpha", "beta");
+            assertThat(chunks).allSatisfy(chunk -> assertThat(chunk.text()).doesNotContain("\uFFFD"));
+        }
     }
 }

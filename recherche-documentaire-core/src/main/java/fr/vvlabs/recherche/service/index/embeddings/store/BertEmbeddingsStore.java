@@ -33,6 +33,20 @@ public interface BertEmbeddingsStore {
     void upsert(BertEmbeddingDocument document);
 
     /**
+     * Remplace les chunks d'un document. Les stores distants peuvent effectuer
+     * leurs validations de collection avant de supprimer les anciens chunks.
+     */
+    default void replaceDocument(Long documentId, List<BertEmbeddingDocument> chunks) {
+        java.util.Objects.requireNonNull(documentId, "documentId");
+        java.util.Objects.requireNonNull(chunks, "chunks");
+        if (chunks.stream().anyMatch(chunk -> chunk == null || !documentId.equals(chunk.documentId()))) {
+            throw new IllegalArgumentException("Every replacement chunk must belong to the same document.");
+        }
+        deleteByDocumentId(documentId);
+        chunks.forEach(this::upsert);
+    }
+
+    /**
      * Supprime tous les chunks d'un document. Necessaire avant la reindexation d'un
      * document pour eviter des chunks obsoletes si son nombre de chunks a diminue.
      *
@@ -123,8 +137,17 @@ public interface BertEmbeddingsStore {
             String author,
             LocalDate dateFrom,
             LocalDate dateTo,
-            int limit
+            int limit,
+            java.util.Set<Long> allowedDocumentIds
     ) {
+        public BertEmbeddingsStoreQuery(float[] queryVector, String category, String author,
+                                        LocalDate dateFrom, LocalDate dateTo, int limit) {
+            this(queryVector, category, author, dateFrom, dateTo, limit, null);
+        }
+
+        public boolean allows(Long documentId) {
+            return allowedDocumentIds == null || allowedDocumentIds.contains(documentId);
+        }
     }
 
     /**

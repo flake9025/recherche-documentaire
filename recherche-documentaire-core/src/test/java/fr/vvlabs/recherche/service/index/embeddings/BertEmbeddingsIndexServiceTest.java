@@ -25,8 +25,13 @@ import java.io.DataOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -100,8 +105,64 @@ class BertEmbeddingsIndexServiceTest {
         assertThat(stored.author()).isEqualTo("Auteur");
         assertThat(stored.category()).isEqualTo("rapport");
         assertThat(stored.filename()).isEqualTo("doc.pdf");
-        assertThat(stored.contentText()).isEqualTo("contenu");
+        assertThat(stored.contentText()).isEqualTo("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu");
         assertThat(stored.embedding()).containsExactly(1.0f, 2.0f);
+    }
+
+    @Test
+    void failedEmbeddingDoesNotPurgePreviouslyIndexedDocument() {
+        var original = new BertEmbeddingDocument(42L, "Original", "", "rapport", "doc.pdf",
+                null, "original text", new float[]{1, 0});
+        bertEmbeddingsStore.upsert(original);
+        when(bertEmbeddingsService.buildIndexText("Updated", null, null, null, "updated text"))
+                .thenReturn("updated text");
+        when(bertEmbeddingsService.generateEmbedding("updated text"))
+                .thenThrow(new IllegalStateException("inference failed"));
+        assertThatThrownBy(() -> service.addDocumentToDocumentIndex(
+                new DocumentDTO().setId(42L).setTitre("Updated"), "updated text"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(bertEmbeddingsStore.findAll()).containsExactly(original);
+    }
+
+    @Test
+    void snapshotWaitsForConcurrentDocumentIndexingToComplete() throws Exception {
+        ReflectionTestUtils.setField(service, "useDatabase", true);
+        CountDownLatch generating = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch saving = new CountDownLatch(1);
+        when(bertEmbeddingsService.buildIndexText("Title", null, null, null, "text")).thenReturn("text");
+        when(bertEmbeddingsService.generateEmbedding("text")).thenAnswer(invocation -> {
+            generating.countDown();
+            if (!release.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Test indexing timeout");
+            }
+            return new float[]{1, 0};
+        });
+        when(indexRepository.findByIndexName("bert_embeddings")).thenReturn(Optional.empty());
+        when(cipherService.encrypt(any(byte[].class))).thenReturn(new byte[]{1});
+        when(bertEmbeddingsService.serialize(any(float[].class))).thenReturn(new byte[]{1, 2});
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var indexing = executor.submit(() -> service.addDocumentToDocumentIndex(
+                    new DocumentDTO().setId(42L).setTitre("Title"), "text"));
+            assertThat(generating.await(5, TimeUnit.SECONDS)).isTrue();
+            var snapshot = executor.submit(() -> {
+                saving.countDown();
+                service.saveDocumentIndexToDatabase();
+                return null;
+            });
+            try {
+                assertThat(saving.await(5, TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(() -> snapshot.get(100, TimeUnit.MILLISECONDS))
+                        .isInstanceOf(TimeoutException.class);
+                verifyNoInteractions(indexRepository);
+            } finally {
+                release.countDown();
+            }
+            indexing.get(5, TimeUnit.SECONDS);
+            snapshot.get(5, TimeUnit.SECONDS);
+        }
+        verify(indexRepository).save(indexEntityCaptor.capture());
+        assertThat(indexEntityCaptor.getValue().getDocumentCount()).isEqualTo(1L);
     }
 
     @Test

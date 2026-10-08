@@ -24,6 +24,21 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class MilvusBertEmbeddingsStoreTest {
 
     @Test
+    void searchPushesAuthorizationFilterIntoMilvus() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = newStore(builder, true);
+        server.expect(requestTo("http://localhost:19530/v2/vectordb/collections/has"))
+                .andRespond(withSuccess("{\"code\":0,\"data\":{\"has\":true}}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("http://localhost:19530/v2/vectordb/entities/search"))
+                .andExpect(content().json("{\"filter\":\"documentId in [10,20]\"}", false))
+                .andRespond(withSuccess("{\"code\":0,\"data\":[]}", MediaType.APPLICATION_JSON));
+        assertThat(store.search(new BertEmbeddingsStoreQuery(new float[]{1, 0}, null, null, null, null, 1,
+                java.util.Set.of(10L, 20L)))).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void getType_returnsMilvus() {
         assertThat(newStore(RestClient.builder(), true).getType()).isEqualTo(BertEmbeddingsStoreType.MILVUS);
     }

@@ -33,6 +33,7 @@ public class IndexController {
     private final DocumentService documentService;
     private final StorageServiceFactory storageServiceFactory;
     private final IndexServiceFactory indexServiceFactory;
+    private final fr.vvlabs.recherche.service.document.DocumentAccessService access;
 
     /**
      * Stocke, lit puis indexe un document unique.
@@ -62,6 +63,7 @@ public class IndexController {
         log.info("File stored at: {}", documentFilePath);
 
         DocumentDTO documentDTO = new DocumentDTO()
+                .setOwnerId(access.currentUser().getId())
                 .setTitre(request.getTitre())
                 .setAuteur(request.getAuteur())
                 .setCategorie(request.getCategorie())

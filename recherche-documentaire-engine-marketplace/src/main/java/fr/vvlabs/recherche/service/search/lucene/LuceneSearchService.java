@@ -75,6 +75,11 @@ public class LuceneSearchService implements SearchService {
 
         BooleanQuery.Builder booleanQuery = new BooleanQuery.Builder();
         booleanQuery.add(baseQuery, BooleanClause.Occur.MUST);
+        if (request != null && request.getAllowedDocumentIds() != null) {
+            booleanQuery.add(new org.apache.lucene.search.TermInSetQuery(IndexConstants.INDEX_KEY_ID,
+                    request.getAllowedDocumentIds().stream().map(id -> new org.apache.lucene.util.BytesRef(id.toString())).toList()),
+                    BooleanClause.Occur.FILTER);
+        }
         addFilter(booleanQuery, IndexConstants.INDEX_KEY_CATEGORIE, category);
         addFilter(booleanQuery, IndexConstants.INDEX_KEY_AUTEUR, author);
 

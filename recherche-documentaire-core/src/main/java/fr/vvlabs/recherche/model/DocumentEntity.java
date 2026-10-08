@@ -25,6 +25,9 @@ public class DocumentEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "owner_id")
+    private Long ownerId;
+
     @Column(name = "titre_document", nullable = false, length = 500)
     private String titreDocument;
 
@@ -56,4 +59,3 @@ public class DocumentEntity {
         }
     }
 }
-

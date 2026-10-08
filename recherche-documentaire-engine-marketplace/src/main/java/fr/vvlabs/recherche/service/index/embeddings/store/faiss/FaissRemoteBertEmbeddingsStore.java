@@ -120,7 +120,8 @@ public class FaissRemoteBertEmbeddingsStore implements BertEmbeddingsStore {
                         query.author(),
                         query.dateFrom(),
                         query.dateTo(),
-                        query.limit()
+                        query.limit(),
+                        query.allowedDocumentIds()
                 ))
                 .retrieve()
                 .body(FaissRemoteSearchResponse.class);

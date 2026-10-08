@@ -17,6 +17,16 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>fr.vvlabs</groupId>
             <artifactId>recherche-documentaire-core</artifactId>
             <version>${project.version}</version>
@@ -65,8 +75,6 @@
         </plugins>
     </build>
 </project>
-
-
 
 
 

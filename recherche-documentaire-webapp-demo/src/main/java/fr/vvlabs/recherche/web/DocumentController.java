@@ -27,6 +27,7 @@ import java.util.Map;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final fr.vvlabs.recherche.service.document.DocumentAccessService access;
 
     /**
      * Retourne tous les documents connus.
@@ -35,7 +36,7 @@ public class DocumentController {
      */
     @GetMapping
     public List<DocumentDTO> findAll() {
-        return documentService.findAll();
+        return documentService.findByIds(access.visibleDocumentIds());
     }
 
     /**
@@ -47,12 +48,14 @@ public class DocumentController {
      */
     @GetMapping("/{id}/file")
     public ResponseEntity<Resource> getDocumentFile(@PathVariable Long id) throws Exception {
+        access.requireRead(id);
         Map.Entry<String, FileSystemResource> entry = documentService.getFileResource(id);
         String downloadName = entry.getKey();
         FileSystemResource resource = entry.getValue();
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + downloadName + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.inline()
+                        .filename(downloadName, java.nio.charset.StandardCharsets.UTF_8).build().toString())
                 .body(resource);
     }
 }

@@ -98,7 +98,7 @@ class LuceneVectorIndexServiceTest {
             assertThat(reader.numDocs()).isEqualTo(1);
             Document stored = reader.storedFields().document(0);
             assertThat(stored.get(INDEX_KEY_ID)).isEqualTo("42");
-            assertThat(stored.get(INDEX_KEY_CONTENT)).isEqualTo("contenu");
+            assertThat(stored.get(INDEX_KEY_CONTENT)).isEqualTo("Titre\n\nAuteur\n\nrapport\n\ndoc.pdf\n\ncontenu");
 
             FloatVectorValues vectors = reader.leaves().getFirst().reader().getFloatVectorValues(VECTOR_FIELD);
             assertThat(vectors).isNotNull();
@@ -161,9 +161,12 @@ class LuceneVectorIndexServiceTest {
                 new ai.djl.huggingface.tokenizers.jni.CharSpan(8, 9)
         };
         when(bertEmbeddingsService.encodeCharSpans(content)).thenReturn(spans);
+        when(bertEmbeddingsService.encodeCharSpans("a b c")).thenReturn(java.util.Arrays.copyOf(spans, 3));
+        when(bertEmbeddingsService.encodeCharSpans("c d e")).thenReturn(java.util.Arrays.copyOf(spans, 3));
         when(bertEmbeddingsService.buildIndexText(any(), any(), any(), any(), any()))
-                .thenReturn("embed-text");
-        when(bertEmbeddingsService.generateEmbedding("embed-text")).thenReturn(new float[]{1.0f, 2.0f});
+                .thenReturn(content);
+        when(bertEmbeddingsService.generateEmbedding("a b c")).thenReturn(new float[]{1.0f, 2.0f});
+        when(bertEmbeddingsService.generateEmbedding("c d e")).thenReturn(new float[]{1.0f, 2.0f});
 
         LuceneVectorIndexService chunkingService = new LuceneVectorIndexService(
                 indexRepository,

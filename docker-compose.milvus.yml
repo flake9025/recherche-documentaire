@@ -58,7 +58,7 @@ services:
       start_period: 20s
 
   minio:
-    image: minio/minio:latest
+    image: ${MILVUS_MINIO_IMAGE:-milvusdb/minio:RELEASE.2024-12-18T13-15-44Z}
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -69,20 +69,21 @@ services:
     volumes:
       - milvus-minio:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 15s
       timeout: 10s
       retries: 10
       start_period: 20s
 
   milvus:
-    image: milvusdb/milvus:latest
+    image: ${MILVUS_IMAGE:-milvusdb/milvus:v2.6.25}
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
     environment:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: minio:9000
+      MINIO_REGION: us-east-1
     ports:
       - "19530:19530"
       - "9091:9091"
@@ -105,8 +106,19 @@ services:
       context: .
     ports:
       - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SPRING_PROFILES_ACTIVE: milvus
+      APP_BOOTSTRAP_PASSWORD: ${APP_BOOTSTRAP_PASSWORD:?Definir APP_BOOTSTRAP_PASSWORD pour initialiser les comptes}
+      APP_DEMO_USERS_ENABLED: ${APP_DEMO_USERS_ENABLED:-true}
+      APP_COOKIE_SECURE: ${APP_COOKIE_SECURE:-false}
+      APP_AI_ENABLED: ${APP_AI_ENABLED:-false}
+      APP_AI_OLLAMA_URL: ${APP_AI_OLLAMA_URL:-http://host.docker.internal:11434}
+      APP_AI_OLLAMA_MODEL: ${APP_AI_OLLAMA_MODEL:-mistral}
+      APP_AI_MISTRAL_URL: ${APP_AI_MISTRAL_URL:-http://host.docker.internal:8000/v1}
+      APP_AI_MISTRAL_MODEL: ${APP_AI_MISTRAL_MODEL:-mistral}
+      APP_AI_MISTRAL_API_KEY: ${APP_AI_MISTRAL_API_KEY:-}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/recherche_documentaire
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
@@ -128,5 +140,3 @@ volumes:
   milvus-etcd:
   milvus-minio:
   milvus-data:
-
-

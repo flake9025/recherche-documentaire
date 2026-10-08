@@ -40,6 +40,7 @@ public class BulkIndexController {
     private final DocumentService documentService;
     private final StorageServiceFactory storageServiceFactory;
     private final IndexServiceFactory indexServiceFactory;
+    private final fr.vvlabs.recherche.service.document.DocumentAccessService access;
 
     /**
      * Duplique un document source puis l'indexe en masse.
@@ -66,6 +67,10 @@ public class BulkIndexController {
             @Parameter(description = "Nombre de copies a creer (par defaut: 500)")
             @RequestParam(value = "count", defaultValue = "500") int count
     ) throws Exception {
+        if (count < 1 || count > 5000) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "count doit etre compris entre 1 et 5000");
+        }
 
         log.info("Debut de l'upload en masse : {} copies de '{}'", count, file.getOriginalFilename());
 
@@ -76,28 +81,16 @@ public class BulkIndexController {
         for (int i = 1; i <= count; i++) {
             try {
                 String uniqueTitre = titre + " - Copie " + i;
-                String originalFilename = file.getOriginalFilename();
-                String uniqueFilename;
-                if (originalFilename == null || originalFilename.isEmpty()) {
-                    uniqueFilename = "document_" + i;
-                } else {
-                    int lastDot = originalFilename.lastIndexOf('.');
-                    if (lastDot > 0) {
-                        uniqueFilename = originalFilename.substring(0, lastDot) + "_copy_" + i + originalFilename.substring(lastDot);
-                    } else {
-                        uniqueFilename = originalFilename + "_copy_" + i;
-                    }
-                }
-
                 log.debug("Traitement document {}/{}: {}", i, count, uniqueTitre);
 
                 Path documentFilePath = storageServiceFactory.getDefaultStorageService().storeFile(file, uniqueTitre);
-                Path uniquePath = documentFilePath.getParent().resolve(uniqueFilename);
-                storageServiceFactory.getDefaultStorageService().moveFile(documentFilePath, uniquePath);
+                // Conserver le nom unique du storage : deux imports concurrents ne doivent pas s'ecraser.
+                Path uniquePath = documentFilePath;
 
                 log.debug("Fichier {} stocke a: {}", i, uniquePath);
 
                 DocumentDTO documentDTO = new DocumentDTO()
+                        .setOwnerId(access.currentUser().getId())
                         .setTitre(uniqueTitre)
                         .setAuteur(auteur)
                         .setCategorie(categorie)

@@ -30,6 +30,350 @@ Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussi
 - autocompletion auteur avec Lucene
 - snapshots chiffres des index documentaires
 - API REST Swagger + UI web locale
+- connexion par session, comptes PostgreSQL et administration des utilisateurs
+- magasins documentaires cloisonnes : utilisateur, responsable, administrateur
+- synthese optionnelle des resultats par une gateway IA on-premise (Ollama / API compatible OpenAI)
+
+## Comptes, magasins et administration
+
+Toutes les API documentaires necessitent une connexion. Les mots de passe sont
+haches avec BCrypt ; les mutations utilisent un jeton CSRF. Les autorisations
+sont recalculees depuis PostgreSQL a chaque requete : une desactivation ou un
+changement de mot de passe revoque les sessions existantes, et un changement de
+role/rattachement prend effet sans reindexer les documents.
+
+| Role | Depot | Recherche, metadonnees, autocompletion et fichiers |
+|---|---|---|
+| `USER` | Son propre magasin | Son propre magasin ; responsable actif obligatoire |
+| `MANAGER` | Son propre magasin | Son magasin et ceux des utilisateurs simples directement rattaches |
+| `ADMIN` | Son propre magasin | Tous les documents, y compris les anciens sans proprietaire |
+
+Le champ `owner_id` est distinct de l'auteur saisi et fixe par le serveur :
+modifier un auteur ne change jamais les droits. Les filtres de recherche sont
+appliques avant le top-k dans Lucene, Lucene Vector, hashmap, FAISS, Qdrant et
+Milvus. Un second controle precede l'exposition des resultats et la synthese IA.
+Les fichiers hors perimetre renvoient 404, sans confirmer leur existence.
+
+Au **premier demarrage sur une base vide**, definir `APP_BOOTSTRAP_PASSWORD`
+(12 caracteres minimum, 72 octets UTF-8 maximum). Aucun mot de passe initial
+n'est versionne ou imprime dans les logs :
+
+```powershell
+$env:APP_BOOTSTRAP_PASSWORD = Read-Host -MaskInput 'Mot de passe initial du POC'
+docker compose -f docker-compose.qdrant.yml up --build
+```
+
+Par defaut, le bootstrap cree `admin`, les responsables `carol` et `david`,
+`alice` et `bob` rattaches a `carol`, et `eve` rattachee a `david`. Ces comptes
+de demonstration partagent uniquement le mot de passe de bootstrap fourni.
+Le bootstrap ne recree pas les comptes supprimes et ne change pas les mots de
+passe au redemarrage. `APP_DEMO_USERS_ENABLED=false` cree seulement `admin`.
+Changer les mots de passe de chaque compte pour des essais realistes.
+
+La page `/login.html` ouvre une session. La page `/admin.html`, reservee aux
+administrateurs, liste, ajoute, modifie et supprime les utilisateurs
+(`/api/admin/users`). La suppression d'un compte possedant des documents ou
+des utilisateurs rattaches est refusee : desactiver le compte ou reaffecter
+ses utilisateurs. Le dernier administrateur actif ne peut pas etre retrograde
+ou desactive ; un administrateur ne peut pas supprimer son propre compte.
+Swagger, la maintenance, le bulk et les statistiques globales sont reserves
+aux administrateurs. `/actuator/health` reste public.
+
+Les clients API doivent recuperer `/api/auth/csrf`, conserver le cookie, puis
+poster `username` et `password` en formulaire sur `/api/auth/login` avec le
+header annonce par le jeton. Recuperer un **nouveau jeton apres connexion**.
+La deconnexion est un POST CSRF sur `/api/auth/logout`. HTTP Basic est aussi
+disponible pour les lectures techniques (notamment Prometheus), uniquement
+avec un compte autorise ; ne pas l'utiliser sans HTTPS hors localhost.
+
+Les documents existants sans proprietaire ne sont pas attribues arbitrairement :
+ils restent visibles seulement par l'administrateur. La migration SQL est
+additive et ne supprime ni documents ni snapshots.
+
+## Synthese IA on-premise
+
+L'IA est desactivee par defaut. Activer `APP_AI_ENABLED=true` et configurer
+les serveurs/modeles dans `app.ai.models`. Le navigateur choisit uniquement
+un identifiant de ce catalogue : il ne fournit jamais une URL ou une cle API.
+
+| Identifiant par defaut | Protocole | Configuration |
+|---|---|---|
+| `ollama-mistral` | Ollama `/api/chat`, sans streaming | `APP_AI_OLLAMA_URL` (defaut `http://localhost:11434`), `APP_AI_OLLAMA_MODEL` (defaut `mistral`) |
+| `mistral-local` | Compatible OpenAI `/chat/completions` | `APP_AI_MISTRAL_URL` (defaut `http://localhost:8000/v1`), `APP_AI_MISTRAL_MODEL`, `APP_AI_MISTRAL_API_KEY` optionnelle |
+
+`mistral-local` designe un modele servi **localement** par vLLM, llama.cpp ou
+un serveur compatible, pas l'API cloud Mistral. Ollama doit disposer du modele
+choisi (par exemple `ollama pull mistral`). Dans Docker, `localhost` designe le
+conteneur : utiliser un service du reseau prive ou `host.docker.internal` pour
+un serveur sur l'hote. L'activation de l'IA ne telecharge ni ne demarre ces serveurs.
+Les fichiers Compose transmettent ces variables et ciblent par defaut
+`host.docker.internal` pour les deux serveurs IA, avec un mapping host-gateway.
+Les endpoints sont sous le controle de l'operateur : les maintenir sur un
+reseau interne et utiliser les regles reseau pour interdire les sorties cloud.
+
+La case **Synthetiser les resultats** est decochee par defaut. La recherche
+accepte `summarize: true` et `aiModel` ; la reponse conserve `fragments` et
+ajoute `summary` (texte, modele, sources numerotees) ou `summaryError`.
+Une panne IA ne supprime pas les resultats de recherche.
+
+La synthese porte sur les **extraits retrouves**, pas sur les documents entiers.
+Seuls les resultats autorises alimentent le prompt. Limites par defaut :
+5 sources, 12 000 caracteres de contexte, 512 tokens de sortie,
+60 secondes et 2 appels simultanes par instance (saturation signalee).
+Les reponses HTTP sont plafonnees a 256 000 octets ; ni prompts ni reponses
+ne sont journalises. Metriques Prometheus : `ai.requests` et `ai.duration`.
+Le texte genere est affiche comme texte, jamais execute comme HTML.
+Les sources sont traitees comme des donnees non fiables ; les instructions
+du prompt reduisent mais ne garantissent pas l'absence d'injection de prompt
+ou d'hallucination. Verifier toute synthese dans les sources citees.
+
+## Concurrence et charge
+
+Le predictor DJL partage est protege contre les appels concurrents ; cela
+assure la correction mais **serialise les embeddings par instance**. Les
+ecritures Lucene restent verrouillees, la reconstruction d'un store vide est
+serialisee localement, et les copies bulk conservent les noms uniques du storage
+pour ne pas ecraser les fichiers d'un autre import concurrent.
+Le CRUD utilisateurs verrouille les comptes dans un ordre stable en transaction
+pour proteger notamment le dernier administrateur lors de modifications concurrentes.
+
+Pour mesurer la recherche avec plusieurs sessions et verifier la hierarchie,
+importer d'abord des documents sous au moins deux comptes distincts :
+
+```powershell
+$env:LOAD_USERS = 'alice,bob,carol,david,eve,admin'
+$env:LOAD_PASSWORD = Read-Host -MaskInput 'Mot de passe des comptes de charge'
+# Facultatif : sur une instance de demo isolee, importer six PDF synthetiques,
+# dont un document long, et verifier aussi CRUD, CSRF et revocation des sessions.
+python scripts\smoke-multiuser.py --url http://localhost:8080 --write-synthetic-documents
+python scripts\benchmark-search.py --url http://localhost:8080 --workers 6 --requests 100 --query rapport
+```
+
+Le smoke test conserve les documents synthetiques, importe sous cinq comptes
+en parallele, tente de falsifier le proprietaire et le perimetre de recherche,
+controle l'autocompletion, reaffecte temporairement Bob puis restaure son responsable,
+et cree/modifie/supprime des comptes temporaires. Ne l'executer **que sur une
+instance de demonstration** ; le flag d'ecriture est obligatoire.
+`--ai-model ollama-mistral` exige en plus une vraie synthese et des sources autorisees.
+La CI rejoue ce test sur chaque variante de moteur, pas seulement un healthcheck.
+
+Le benchmark de recherche utilise seulement la bibliotheque standard Python, verifie les
+metadonnees par role/rattachement, teste des telechargements interdits puis
+controle chaque resultat et source IA pendant la charge. Il restitue debit,
+p50/p95/p99, erreurs HTTP et erreurs IA et termine en erreur en cas de fuite.
+Le corpus et les rattachements doivent rester stables pendant cette mesure.
+Augmenter progressivement `--workers` (maximum 64) ; `--ai-model ollama-mistral`
+mesure aussi la gateway et compte explicitement les erreurs de synthese.
+La meme valeur `LOAD_PASSWORD` est utilisee pour les comptes de charge :
+employer des comptes de demonstration dedies, jamais des comptes reels.
+Le repertoire `deploy/` est ignore par Git : les scripts d'exploitation locaux
+doivent eux aussi gerer session/CSRF. `benchmark-upload.sh` utilise
+`BENCH_USERNAME`, `BENCH_PASSWORD` et `jq` ; le mode bulk exige un admin.
+Pour le deploiement NAS, conserver la configuration sensible dans un fichier
+non versionne `APP_ENV_FILE`, fourni au conteneur via `--env-file`.
+
+### Resultats de validation locale
+
+Les parcours multi-utilisateur ont ete executes sur les six variantes Docker :
+proprietaire impose, recherche/fichiers/autocompletion cloisonnes, changement
+de responsable, CRUD, CSRF, revocation des sessions et cinq imports simultanes.
+La creation concurrente du meme username donne un succes et un conflit.
+Cela valide ces scenarios, pas un audit de securite exhaustif.
+
+Une serie de charge utilise le **meme corpus de 48 PDF synthetiques**, six
+workers/sessions et **180 recherches par variante**, apres reconstruction et
+echauffement. L'application est limitee a **2 CPU / 4 Go**, avec MiniLM pour
+les moteurs vectoriels, sans synthese IA pendant la mesure. Les backends
+restent sur le meme hote Docker ; leurs budgets et algorithmes different :
+ce petit corpus n'etablit ni une capacite maximale ni un classement general.
+
+| Moteur / store | Requetes/s | p95 (ms) | p99 (ms) |
+|---|---:|---:|---:|
+| Lucene texte | 37,74 | 281,67 | 307,62 |
+| Lucene Vector | 12,50 | 765,54 | 1 066,82 |
+| BERT / hashmap | 17,21 | 572,36 | 668,79 |
+| BERT / FAISS | 13,95 | 681,40 | 892,92 |
+| BERT / Qdrant, trois noeuds | 10,62 | 958,12 | 1 472,09 |
+| BERT / Milvus standalone | 15,79 | 577,94 | 875,92 |
+
+Aucun echec HTTP ni fuite de perimetre detecte sur ces 1 080 recherches ;
+cinq telechargements interdits verifies par variante. Le corpus vectoriel
+final contient **184 chunks de 48 documents**, tous de dimension 384 et
+au plus **254 tokens de contenu** avec le vrai tokenizer MiniLM. Les fins
+des documents sont presentes. Un redemarrage de l'app a aussi restitue un
+snapshot strictement identique sur le corpus intermediaire de 18 documents.
+
+Une vraie synthese a ete obtenue via **Ollama / `qwen2.5:0.5b`**, configure
+derriere l'ID de catalogue `ollama-mistral`, avec sources autorisees.
+Ce n'est pas une validation d'inference du modele Mistral : le connecteur
+OpenAI-compatible est couvert par ses tests de contrat HTTP.
+
+### Multi-tenant sur tous les moteurs
+
+Qdrant supporte le [multi-tenant par payload et sharding](https://qdrant.tech/documentation/manage-data/multitenancy/)
+et le [deploiement distribue](https://qdrant.tech/documentation/scaling/distributed_deployment/)
+avec shards et replication. Milvus propose aussi des mecanismes multi-tenant
+(bases, collections, partitions et partition keys) et un
+[mode cluster distribue](https://milvus.io/docs/install-overview.md).
+Le Compose Milvus du POC utilise actuellement le mode **standalone**.
+Ces moteurs ne remplacent pas les roles applicatifs :
+l'application doit calculer et imposer le perimetre utilisateur/responsable/admin.
+Tous les moteurs sont conserves et respectent le meme perimetre :
+
+| Moteur / store | Cloisonnement dans le POC | Distribution native du composant utilise |
+|---|---|---|
+| Lucene texte | Filtre documentaire avant classement/limite | Non, index local |
+| Lucene Vector | Filtre KNN avant selection des voisins | Non, index local |
+| BERT / hashmap | Filtre des candidats avant score/limite | Non, memoire locale |
+| BERT / FAISS | Filtre des IDs autorises avant score/limite | Non, service FAISS local |
+| BERT / Qdrant | Filtre payload `documentId` dans la requete | Oui, shards et replicas |
+| BERT / Milvus | Filtre scalaire des IDs dans la requete | Oui, mode distribue Milvus |
+
+Le service vectoriel doit rester inaccessible aux clients finaux
+(reseau prive, authentification et TLS adaptes au deploiement).
+
+Cette version filtre les IDs documentaires autorises issus de PostgreSQL,
+ce qui fonctionne aussi avec les snapshots historiques. Pour de tres grands
+corpus, remplacer ces listes par un payload `tenant_id` indexe avec
+`is_tenant=true` et des filtres de magasins, apres migration des index.
+Ce POC ne revendique donc pas une scalabilite multi-tenant en production
+ou sur de tres grands corpus.
+
+### Qdrant : trois noeuds, sharding et disponibilite
+
+`docker-compose.qdrant.yml` conserve le mode mono-noeud. La variante
+**independante** `docker-compose.qdrant-cluster.yml` ajoute trois peers et une
+gateway REST Nginx ; ses ports et volumes sont distincts du mono-noeud :
+
+```powershell
+$env:APP_BOOTSTRAP_PASSWORD = Read-Host -MaskInput 'Mot de passe initial'
+docker compose -f docker-compose.qdrant-cluster.yml up --build
+```
+
+UI : `http://localhost:8085` ; gateway Qdrant : `http://localhost:6342` ;
+REST des peers : `6343`, `6344`, `6345` ; PostgreSQL : `5434`.
+Tous ces ports sont lies a `127.0.0.1` dans cette variante.
+Le port inter-peer `6335` n'est pas publie. Chaque peer a son propre volume.
+La gateway attend que les trois peers soient connus avant le demarrage de l'app.
+`QDRANT_IMAGE` permet de figer une version ou un digest identique pour tous les noeuds.
+
+La collection applicative est creee avec **6 shards logiques**, **2 replicas**
+par shard (donc **12 copies physiques de shards**, pas 12 shards logiques),
+et `write_consistency_factor=1`. Ces reglages sont configurables :
+
+| Variable Compose | Propriete Java | Defaut du cluster |
+|---|---|---|
+| `QDRANT_SHARD_NUMBER` | `app.embeddings.store.qdrant.shard-number` | `6` |
+| `QDRANT_REPLICATION_FACTOR` | `app.embeddings.store.qdrant.replication-factor` | `2` |
+| `QDRANT_WRITE_CONSISTENCY_FACTOR` | `app.embeddings.store.qdrant.write-consistency-factor` | `1` |
+| `QDRANT_COLLECTION` | `app.embeddings.store.qdrant.collection` | `document-embeddings-cluster` |
+
+La creation et les operations de remplacement refusent une collection de
+dimensions/topologie incompatibles **avant de supprimer des chunks**.
+Changer de nom de collection puis reindexer, ou effectuer une migration explicite.
+Les chunks Qdrant d'un document sont envoyes en batches apres validation de
+tous les vecteurs. La sauvegarde BERT partage le verrou d'indexation pour ne
+pas serialiser un document partiellement remplace.
+Le nombre de candidats applicatifs est borne a `200` dans cette variante
+(`APP_EMBEDDINGS_SEARCH_CANDIDATE_LIMIT`) ; il ne faut pas confondre cette
+limite de candidats avec le nombre final de documents retournes.
+
+Verifier la topologie reelle, pas seulement le nombre de conteneurs :
+
+```powershell
+Invoke-RestMethod http://localhost:6342/cluster
+Invoke-RestMethod http://localhost:6343/collections/document-embeddings-cluster/cluster
+Invoke-RestMethod http://localhost:6344/collections/document-embeddings-cluster/cluster
+Invoke-RestMethod http://localhost:6345/collections/document-embeddings-cluster/cluster
+```
+
+Les collections sont creees au premier import ; les points sont repartis par
+hash, pas un shard par utilisateur. Les filtres applicatifs restent indispensables.
+Ajouter un peer a une collection existante ne redistribue pas automatiquement
+les donnees : prevoir des transferts de shards ou une migration explicite.
+Deux replicas permettent de tester la perte d'un noeud avec une majorite Raft
+de deux peers sur trois ; ils doublent aussi le stockage vectoriel.
+La replication et la gateway ne garantissent pas l'absence de toute erreur
+pendant la transition de panne, ni un debit trois fois superieur.
+
+Sur la collection applicative reelle de **184 points logiques**, l'arret
+controle d'un peer a permis **60 recherches / 6 workers**, sans erreur HTTP
+ni fuite de perimetre detectee. Les deux survivants ont restitue le compte
+logique complet ; le peer redemarre a retrouve ses shards actifs et ce meme
+compte. Cette panne unique sur le meme hote ne valide pas toutes les
+partitions reseau ni la disponibilite en production.
+
+### Mesurer le scaling Qdrant sans le confondre avec DJL
+
+Le profil `benchmark` ajoute un **quatrieme Qdrant independant**, mono-noeud,
+sur `6346`, uniquement comme temoin. Chaque serveur Qdrant est limite a un CPU
+et 1 Go par defaut (`QDRANT_CPU_LIMIT`, `QDRANT_MEMORY_LIMIT`).
+Le cluster a donc trois fois ce budget CPU, pas un budget total identique.
+
+```powershell
+docker compose -f docker-compose.qdrant-cluster.yml --profile benchmark up -d --build
+python scripts\benchmark-qdrant.py --points 20000 --dimensions 384 --replicas 1 --workers 1,8,24 --requests 100
+```
+
+Le script genere un corpus deterministe identique sur les deux cibles, avec
+index payload `tenant_id` / `is_tenant=true` et filtres avant top-k. Il verifie
+les peers distincts, chaque shard/replique actif, les **comptes logiques**
+exacts sur tous les peers et l'absence de fuite de tenant sur chaque requete.
+Le nombre de shards, les vecteurs et les requetes sont identiques.
+`--replicas 1` compare le meme cout de replication ; `--replicas 2` teste
+la distribution redondante mais n'est plus une comparaison pure de capacite.
+Le calcul est exact par defaut pour comparer le meme travail ; `--no-exact`
+mesure HNSW et impose d'examiner aussi le nombre de vecteurs indexes et la qualite.
+Le rapport JSON restitue debit **des requetes reussies**, p50/p95/p99, erreurs,
+versions et placements. `--output <fichier.json>` conserve le rapport.
+
+Seules des collections neuves `demo-scaling-*` sont creees. Une collection
+existante est refusee, jamais remplacee ; les collections creees sont supprimees
+a la fin sauf `--keep-collection`. Le corpus applicatif n'est pas touche.
+Pour une mesure interpretable, laisser les optimiseurs terminer et ne pas
+compiler, importer, generer des syntheses ou executer d'autres charges simultanement.
+La CI verifie aussi la variante distribuee sur un petit corpus synthetique.
+
+Trois conteneurs **sur le meme hote Docker** demontrent le sharding, la
+replication et le failover fonctionnel, mais pas un scaling de production
+entre machines. Sur un petit corpus, le fan-out reseau peut meme rendre le
+cluster plus lent ; publier les mesures, pas une promesse de gain lineaire.
+Le benchmark vectoriel n'inclut ni PostgreSQL, ni les droits hierarchiques,
+ni les embeddings DJL : utiliser aussi `benchmark-search.py --url http://localhost:8085`
+pour le parcours applicatif multi-utilisateur.
+
+La mesure locale Qdrant **1.18.3** utilise 20 000 vecteurs de dimension 384,
+six tenants, six shards, une seule copie par shard sur les deux cibles,
+`exact=true`, `top-k=10`, seed `9025` et 100 requetes par worker.
+Les autres conteneurs de validation ont ete arretes avant cette mesure.
+Les six shards sont actifs et repartis a raison de deux par peer ; les
+20 000 points logiques ont ete verifies depuis chaque peer.
+
+| Workers | Mono-noeud : req/s | Trois noeuds : req/s | Mono-noeud : p95 (ms) | Trois noeuds : p95 (ms) |
+|---:|---:|---:|---:|---:|
+| 1 | 232,40 | 146,55 | 5,12 | 8,86 |
+| 8 | 524,64 | 440,55 | 42,28 | 38,29 |
+| 24 | 566,07 | 486,18 | 72,27 | 85,78 |
+
+Les **6 600 requetes** ont reussi et respecte leur filtre tenant. Sur ce
+corpus, **le cluster ne gagne pas en debit**, malgre trois CPU contre un :
+le sharding et la disponibilite sont demontres, pas un gain de capacite.
+La gateway et le fan-out sont inclus dans le chemin distribue. Les indexes
+HNSW couvrent respectivement 18 722 et 17 618 vecteurs ; cette mesure utilise
+le calcul exact et ne constitue donc pas une comparaison de rappel HNSW.
+
+### Limites du POC
+
+Les sessions HTTP restent en memoire : plusieurs instances necessitent du
+sticky routing ou une implementation de sessions partagees. Les index locaux,
+snapshots et reconstructions ne constituent pas encore une architecture
+multi-instance coherente. Le stockage documentaire partage, la coordination
+des ecritures/reconstructions, les ressources GPU/CPU et PostgreSQL doivent
+egalement etre dimensionnes. Utiliser uniquement des donnees synthetiques pour
+la demonstration ; ce POC ne constitue pas une validation de securite de production.
+Pour un acces reseau, activer HTTPS et `APP_COOKIE_SECURE=true`, remplacer les
+secrets de demonstration, restreindre les endpoints techniques et prevoir
+limitation des connexions, supervision et audit d'acces.
 
 ## Architecture
 
@@ -115,12 +459,35 @@ de tokens du modele, via `TextChunker`
 - ne concerne que les moteurs vectoriels (`bert`, `lucene-vector` et les stores associes) ;
   le moteur `lucene` texte n'a pas de limite de tokens et n'est pas chunke.
 
+Le tokenizer de decoupage utilise les memes regles de tokenisation mais
+**sans troncature ni padding**, independamment du tokenizer du predictor.
+Le texte final (metadonnees + OCR) est decoupe avant embedding : aucun prefixe
+n'est ajoute apres le decoupage. Deux tokens sont reserves pour CLS/SEP.
+Un echec du tokenizer interrompt l'indexation au lieu de revenir silencieusement
+au document entier. Le decoupage respecte les offsets du texte original et
+couvre sa fin. La cle de point refuse les indices >= 10000 pour eviter les
+collisions entre documents.
+Les offsets natifs en code points sont convertis en indices UTF-16 Java pour
+ne pas couper les caracteres supplementaires. Chaque passage est **retokenise**
+avant validation du budget : un sous-mot coupe peut generer davantage de tokens
+au debut d'un chunk. La fenetre est reduite et le pas recalcule, y compris avec
+un overlap nul, sans sauter les tokens retranches.
+Les snapshots existants ne sont pas automatiquement rechunkes :
+reindexer le corpus pour beneficier du nouveau decoupage, via le bouton
+**Reindexer le corpus** de Maintenance ou POST `/api/admin/index/rebuild`
+(administrateur + CSRF). Cette operation traite le corpus avec l'indexeur
+par defaut, conserve les proprietaires et sauvegarde le snapshot.
+Une erreur OCR/embedding interrompt l'operation et est signalee ; les documents
+deja traites restent reindexes. Ne pas executer cette operation pendant une
+campagne de charge et ne pas confondre moteur d'indexation et moteur de recherche.
+
 Reglages (voir `application.yml`) :
 
 | Propriete | Defaut | Role |
 |---|---|---|
 | `app.embeddings.chunk.enabled` | `true` | Active le decoupage (sinon 1 vecteur par document) |
-| `app.embeddings.chunk.max-tokens` | `256` | Taille de la fenetre en tokens |
+| `app.embeddings.model-max-tokens` | `256` | Fenetre du modele ; adapter au modele choisi |
+| `app.embeddings.chunk.max-tokens` | `254` | Tokens de contenu, au plus fenetre modele moins 2 |
 | `app.embeddings.chunk.overlap-tokens` | `32` | Chevauchement entre chunks consecutifs |
 | `app.search.vector.candidate-multiplier` | `8` | Sur-echantillonnage KNN pour compenser plusieurs chunks/document |
 
@@ -626,6 +993,13 @@ Ce qui est lance:
 | `app` | 8080 | Spring Boot en profil `milvus` + store `milvus` |
 
 Le conteneur `app` active le store `milvus` au runtime via la configuration (`app.embeddings.store.default=milvus`).
+Le Compose fige `milvusdb/milvus:v2.6.25` pour le contrat REST v2 du POC et
+`milvusdb/minio:RELEASE.2024-12-18T13-15-44Z`, l'image MinIO publiee par Milvus
+et referencee dans son [manifeste de deploiement courant](https://raw.githubusercontent.com/milvus-io/milvus/master/deployments/docker/standalone/docker-compose.yml).
+Le depot `minio/minio`
+n'etait pas accessible pendant la validation, y compris avec des tags
+archives et un client Docker anonyme. `MILVUS_IMAGE` et `MILVUS_MINIO_IMAGE`
+permettent de fournir d'autres images compatibles.
 
 Arret:
 
@@ -648,7 +1022,7 @@ Le backend de stockage `s3` permet d'utiliser n'importe quel serveur S3 compatib
 
 | Serveur | Usage |
 |---------|-------|
-| `minio/minio` | image Docker officielle, ideal en local |
+| MinIO | Image officielle si disponible, ou image `milvusdb/minio` utilisee par la variante Milvus |
 | `localstack/localstack` | alternative locale avec emulation AWS |
 | AWS S3 | laisser `endpoint` vide, credentiels IAM |
 
@@ -671,14 +1045,17 @@ app:
       auto-create-bucket: true
 ```
 
-### Test local avec MinIO (image officielle)
+### Test local avec MinIO
+
+L'exemple utilise l'image distribuee par Milvus ; remplacer le nom par un
+tag `minio/minio` accessible si vous disposez de cette image.
 
 ```bash
 docker run -d --name minio \
   -p 9000:9000 -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin \
-  minio/minio server /data --console-address ":9001"
+  milvusdb/minio:RELEASE.2024-12-18T13-15-44Z server /data --console-address ":9001"
 ```
 
 - Console MinIO: `http://localhost:9001`
@@ -788,4 +1165,3 @@ Le deploiement NAS s'appuie sur `deploy/deploy-github-documents.sh`, qui demarre
 - les services de support `faiss` et `qdrant`
 
 Qdrant utilise l'image officielle `qdrant/qdrant:latest`, il n'y a donc pas d'image Qdrant custom a publier dans GHCR.
-

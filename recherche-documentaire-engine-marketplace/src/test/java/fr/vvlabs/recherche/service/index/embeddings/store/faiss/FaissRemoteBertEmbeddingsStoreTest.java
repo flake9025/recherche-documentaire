@@ -23,6 +23,19 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 class FaissRemoteBertEmbeddingsStoreTest {
 
     @Test
+    void searchSendsServerAuthorizationScopeToFaiss() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        var store = new FaissRemoteBertEmbeddingsStore(builder, "http://localhost:8090", true);
+        server.expect(requestTo("http://localhost:8090/api/faiss/search"))
+                .andExpect(content().json("{\"allowedDocumentIds\":[10]}", false))
+                .andRespond(withSuccess("{\"matches\":[]}", MediaType.APPLICATION_JSON));
+        assertThat(store.search(new BertEmbeddingsStoreQuery(new float[]{1, 0}, null, null, null, null, 1, java.util.Set.of(10L))))
+                .isEmpty();
+        server.verify();
+    }
+
+    @Test
     void search_callsRemoteServiceAndMapsResponse() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

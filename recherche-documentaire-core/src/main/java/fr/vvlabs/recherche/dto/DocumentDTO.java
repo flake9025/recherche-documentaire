@@ -18,6 +18,8 @@ public class DocumentDTO {
 
     private Long id;
 
+    private Long ownerId;
+
     @NotBlank(message = "Le titre du document est obligatoire")
     private String titre;
 

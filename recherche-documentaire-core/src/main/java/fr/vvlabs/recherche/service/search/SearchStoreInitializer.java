@@ -6,7 +6,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalTime;
 
@@ -26,7 +25,7 @@ public class SearchStoreInitializer {
      * Si le store est vide, le reconstruit et retourne le temps écoulé en ms.
      * Retourne 0 si aucun rebuild n'était nécessaire.
      */
-    public long rebuildIfEmpty(SearchService searchService) throws Exception {
+    public synchronized long rebuildIfEmpty(SearchService searchService) throws Exception {
         if (!searchService.isSearchStoreEmpty()) {
             return 0L;
         }
@@ -34,22 +33,24 @@ public class SearchStoreInitializer {
         log.info("Search store is empty: building from documents metadata");
         LocalTime startTime = LocalTime.now();
 
-        documentService.findAll().forEach(documentDTO -> {
-            String documentFileText = "";
-            try {
-                documentFileText = documentService.getFileText(documentDTO);
-            } catch (IOException e) {
-                log.error("getFileText error : {}", e.getMessage(), e);
-            }
-            try {
-                indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(documentDTO, documentFileText);
-            } catch (Exception e) {
-                log.error("addToIndex error : {}", e.getMessage(), e);
-            }
-        });
+        indexAllDocuments();
 
         long elapsed = Duration.between(startTime, LocalTime.now()).toMillis();
         log.info("Elapsed millis for search store rebuild: {}", elapsed);
         return elapsed;
+    }
+
+    public synchronized long rebuildAll() throws Exception {
+        long start = System.nanoTime();
+        indexAllDocuments();
+        indexServiceFactory.getDefaultIndexService().saveDocumentIndexToDatabase();
+        return (System.nanoTime() - start) / 1_000_000L;
+    }
+
+    private void indexAllDocuments() throws Exception {
+        for (var document : documentService.findAll()) {
+            String text = documentService.getFileText(document);
+            indexServiceFactory.getDefaultIndexService().addDocumentToDocumentIndex(document, text);
+        }
     }
 }

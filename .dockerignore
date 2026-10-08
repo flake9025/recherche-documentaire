@@ -6,3 +6,4 @@ storage
 lucene-suggest
 README.md
 screenshot.png
+__pycache__

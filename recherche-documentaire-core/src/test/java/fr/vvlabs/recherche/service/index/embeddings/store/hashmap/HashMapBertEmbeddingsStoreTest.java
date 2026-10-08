@@ -15,6 +15,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HashMapBertEmbeddingsStoreTest {
 
     @Test
+    void searchFiltersBeforeLimitingAndEmptyScopeReturnsNothing() {
+        var store = new HashMapBertEmbeddingsStore();
+        store.upsert(new BertEmbeddingDocument(1L, "", "", "", "", null, "secret", new float[]{1, 0}));
+        store.upsert(new BertEmbeddingDocument(2L, "", "", "", "", null, "autorise", new float[]{0, 1}));
+        assertThat(store.search(new BertEmbeddingsStoreQuery(new float[]{1, 0}, null, null, null, null, 1, java.util.Set.of(2L))))
+                .extracting(match -> match.document().documentId()).containsExactly(2L);
+        assertThat(store.search(new BertEmbeddingsStoreQuery(new float[]{1, 0}, null, null, null, null, 1, java.util.Set.of())))
+                .isEmpty();
+    }
+
+    @Test
     void search_filtersAndSortsBySemanticScore() {
         HashMapBertEmbeddingsStore store = new HashMapBertEmbeddingsStore();
         store.upsert(new BertEmbeddingDocument(

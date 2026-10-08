@@ -322,6 +322,11 @@ public class MilvusBertEmbeddingsStore implements BertEmbeddingsStore {
 
     private String buildFilter(BertEmbeddingsStoreQuery query) {
         List<String> clauses = new ArrayList<>();
+        if (query.allowedDocumentIds() != null) {
+            clauses.add(query.allowedDocumentIds().isEmpty() ? DOCUMENT_ID_FIELD + " < 0"
+                    : DOCUMENT_ID_FIELD + " in [" + query.allowedDocumentIds().stream().sorted()
+                    .map(String::valueOf).collect(java.util.stream.Collectors.joining(",")) + "]");
+        }
         if (query.category() != null && !query.category().isBlank()) {
             clauses.add("categoryNormalized == \"" + escape(normalize(query.category())) + "\"");
         }

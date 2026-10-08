@@ -81,9 +81,12 @@ public class BertEmbeddingsSearchService implements SearchService {
                 effectiveRequest.getAuthor(),
                 effectiveRequest.getDateFrom(),
                 effectiveRequest.getDateTo(),
-                candidateLimit
+                candidateLimit,
+                effectiveRequest.getAllowedDocumentIds()
         ));
         List<SearchFragmentDTO> fragments = BertEmbeddingsStore.bestChunkPerDocument(chunkMatches).stream()
+                .filter(match -> effectiveRequest.getAllowedDocumentIds() == null
+                        || effectiveRequest.getAllowedDocumentIds().contains(match.document().documentId()))
                 .map(match -> toSearchFragment(match, query, queryTokens))
                 .filter(fragment -> query.isBlank() || fragment.getScore() >= minScore)
                 .sorted(Comparator.comparing(SearchFragmentDTO::getScore).reversed())

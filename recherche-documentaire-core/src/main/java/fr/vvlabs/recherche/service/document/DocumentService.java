@@ -62,6 +62,7 @@ public class DocumentService {
         Long documentId = saved.getId();
         log.info("Metadonnees sauvegardees avec l'ID: {}", documentId);
         documentDTO.setId(documentId);
+        documentDTO.setDepotDateTime(depotDateTime);
         return documentId;
     }
 
@@ -76,6 +77,12 @@ public class DocumentService {
                 .map(this::safeToDto)
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<DocumentDTO> findByIds(java.util.Set<Long> ids) {
+        return repository.findAllById(ids).stream().map(this::safeToDto)
+                .filter(Objects::nonNull).toList();
     }
 
     /**

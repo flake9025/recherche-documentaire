@@ -11,7 +11,49 @@ const ENDPOINTS = {
 // ==================== INITIALISATION ====================
 window.addEventListener('load', function() {
     initEventListeners();
+    initializeSession().catch(error => showError(document.getElementById('searchError'), error.message));
+    initializeAi();
 });
+
+async function initializeAi() {
+    const status = document.getElementById('aiStatus');
+    try {
+        const response = await fetch('/api/ai/models');
+        if (!response.ok) throw new Error('Catalogue IA indisponible');
+        const models = await response.json();
+        const select = document.getElementById('aiModel');
+        models.forEach(model => select.add(new Option(`${model.model} (${model.provider})`, model.id)));
+        select.disabled = models.length === 0;
+        document.getElementById('summarizeResults').disabled = models.length === 0;
+        status.textContent = models.length ? 'Synthese indicative, a verifier dans les sources.' : 'Synthese IA desactivee sur ce serveur.';
+    } catch (error) {
+        status.textContent = error.message;
+    }
+}
+
+function displaySummary(data) {
+    const box = document.getElementById('aiSummary');
+    box.replaceChildren();
+    box.hidden = !data.summary && !data.summaryError;
+    if (data.summaryError) {
+        box.textContent = `Synthese indisponible : ${data.summaryError}`;
+    } else if (data.summary) {
+        const heading = document.createElement('h3');
+        heading.textContent = `Synthese IA (${data.summary.model}) - a verifier`;
+        const text = document.createElement('p');
+        text.style.whiteSpace = 'pre-wrap';
+        text.textContent = data.summary.text;
+        box.append(heading, text);
+        data.summary.sources.forEach(source => {
+            const link = document.createElement('a');
+            link.href = `/api/documents/${encodeURIComponent(source.documentId)}/file`;
+            link.textContent = `[${source.number}] ${source.title || 'Document'}`;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            box.append(link, document.createElement('br'));
+        });
+    }
+}
 
 function initEventListeners() {
     document.getElementById('searchBtn').addEventListener('click', performSearch);
@@ -19,6 +61,23 @@ function initEventListeners() {
     document.getElementById('resetIndexBtn').addEventListener('click', resetIndexForm);
     document.getElementById('clearSearchBtn').addEventListener('click', clearSearch);
     document.getElementById('rebuildAuthorsBtn').addEventListener('click', rebuildAuthorsIndex);
+    document.getElementById('rebuildDocumentsBtn').addEventListener('click', async event => {
+        if (!confirm('Reindexer tous les magasins avec le moteur et le chunking actuels ?')) return;
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+            const response = await fetch('/api/admin/index/rebuild', { method: 'POST' });
+            if (!response.ok) throw new Error(`Reindexation echouee (HTTP ${response.status})`);
+            const data = await response.json();
+            const success = document.getElementById('maintenanceSuccess');
+            success.textContent = `Corpus reindexe en ${data.durationMs} ms`;
+            showElement(success);
+        } catch (error) {
+            showError(document.getElementById('maintenanceError'), error.message);
+        } finally {
+            button.disabled = false;
+        }
+    });
 
     document.getElementById('indexFile').addEventListener('change', handleFileChange);
 
@@ -176,7 +235,9 @@ async function performSearch() {
             author: hasAuthor ? authorFilter.trim() : null,
             dateFrom: hasDateFrom ? dateFrom.trim() : null,
             dateTo: hasDateTo ? dateTo.trim() : null,
-            sort: sort === 'Plus récents' ? 'DESC' : 'ASC'
+            sort: sort === 'Plus récents' ? 'DESC' : 'ASC',
+            summarize: document.getElementById('summarizeResults').checked,
+            aiModel: document.getElementById('aiModel').value
         };
 
         const response = await fetch(`${API_BASE}${ENDPOINTS.search}`, {
@@ -190,6 +251,7 @@ async function performSearch() {
         }
 
         const data = await response.json();
+        displaySummary(data);
         displaySearchResults(data, resultContent, resultsCount, resultsHeader, resultsRuntime);
         showElement(result);
     } catch (err) {
@@ -223,13 +285,13 @@ function createDocumentCard(fragment) {
     const name = escapeHtml(fragment.name || 'Sans titre');
     const author = escapeHtml(fragment.author || 'Auteur inconnu');
     const category = escapeHtml(fragment.category || 'Non classé');
-    const dateDepot = fragment.date;
+    const dateDepot = escapeHtml(fragment.date || '');
     const filename = escapeHtml(fragment.filename || '');
-    const snippet = fragment.fragment || '';
+    const snippet = escapeHtml(fragment.fragment || '').replace(/&lt;(\/?)b&gt;/g, '<$1b>');
     const score = fragment.score !== undefined ? fragment.score.toFixed(2) : 'N/A';
 
     // Si ton backend renvoie un URL complet, on l'utilise directement
-    const fileUrl = fragment.fileUrl ? escapeHtml(fragment.fileUrl) : null;
+    const fileUrl = `/api/documents/${encodeURIComponent(fragment.id)}/file`;
 
     const categoryLabel = mapCategoryLabel(category);
 
@@ -626,4 +688,3 @@ function escapeHtml(text) {
     };
     return text.replace(/[&<>"']/g, m => map[m]);
 }
-

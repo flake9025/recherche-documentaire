@@ -33,6 +33,8 @@ public class SearchController {
     private final SearchStoreInitializer searchStoreInitializer;
     private final SearchServiceFactory searchServiceFactory;
     private final SearchMetricsRecorder searchMetricsRecorder;
+    private final fr.vvlabs.recherche.service.document.DocumentAccessService access;
+    private final fr.vvlabs.recherche.service.ai.AiGateway aiGateway;
 
     @Value("${app.search.wildcard}")
     private boolean wildcardEnabled;
@@ -55,6 +57,7 @@ public class SearchController {
     public SearchResultDTO search(@RequestBody SearchRequestDTO request) throws Exception {
         LocalTime overallStartTime = LocalTime.now();
         SearchRequestDTO effectiveRequest = request == null ? new SearchRequestDTO() : request;
+        effectiveRequest.setAllowedDocumentIds(access.visibleDocumentIds());
         SearchService searchService = searchServiceFactory.getDefaultSearchService();
 
         String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
@@ -68,10 +71,28 @@ public class SearchController {
         }
         effectiveRequest.setQuery(text);
 
-        long rebuildTimeMs = searchStoreInitializer.rebuildIfEmpty(searchService);
+        long rebuildTimeMs = effectiveRequest.getAllowedDocumentIds().isEmpty()
+                ? 0L : searchStoreInitializer.rebuildIfEmpty(searchService);
         boolean rebuildTriggered = rebuildTimeMs > 0;
 
-        SearchResultDTO result = searchService.search(effectiveRequest);
+        SearchResultDTO result = effectiveRequest.getAllowedDocumentIds().isEmpty()
+                ? new SearchResultDTO() : searchService.search(effectiveRequest);
+        // Seconde barriere : meme un backend obsolet ne doit pas exposer un resultat hors perimetre.
+        var visibleNow = access.visibleDocumentIds();
+        result.setFragments(result.getFragments().stream()
+                .filter(fragment -> visibleNow.contains(Long.valueOf(fragment.getId()))).toList());
+        result.setNbResults(result.getFragments().size());
+        if (effectiveRequest.isSummarize()) {
+            try {
+                var summary = aiGateway.summarize(effectiveRequest.getAiModel(), effectiveRequest.getQuery(), result.getFragments());
+                result.setSummary(new SearchResultDTO.SummaryDTO(summary.text(), summary.model(), summary.sources().stream()
+                        .map(source -> new SearchResultDTO.SummarySourceDTO(source.number(), source.documentId(),
+                                source.title(), source.fileUrl())).toList()));
+            } catch (org.springframework.web.server.ResponseStatusException exception) {
+                log.warn("AI synthesis failed status={}", exception.getStatusCode().value());
+                result.setSummaryError(exception.getReason());
+            }
+        }
         long responseTimeMs = Duration.between(overallStartTime, LocalTime.now()).toMillis();
         result.setMetrics(searchMetricsRecorder.snapshot(responseTimeMs, rebuildTimeMs, result.getEmbeddingTimeMs()));
         searchMetricsRecorder.recordSearch(

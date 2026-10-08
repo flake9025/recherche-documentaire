@@ -7,6 +7,11 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="toolbar">
+        <span id="currentUser"></span>
+        <a href="/admin.html" data-admin-only hidden>Administration des utilisateurs</a>
+        <button class="btn btn-ghost" id="logoutBtn" type="button">Deconnexion</button>
+    </div>
     <div class="page-shell">
         <div class="main-area">
             <header class="topbar">
@@ -158,6 +163,11 @@
                                 </div>
                             </div>
 
+                            <div class="field">
+                                <label><input type="checkbox" id="summarizeResults" disabled> Synthetiser les resultats avec une IA locale</label>
+                                <label class="control">Modele IA <select class="select-box" id="aiModel" disabled></select></label>
+                                <p id="aiStatus" role="status"></p>
+                            </div>
                             <div class="btn-row">
                                 <button class="btn" id="searchBtn">Lancer la recherche</button>
                                 <button class="btn btn-ghost" id="clearSearchBtn" type="button">Effacer</button>
@@ -176,6 +186,7 @@
                                     </div>
                                     <div class="results-runtime" id="resultsRuntime"></div>
                                 </div>
+                                <div id="aiSummary" hidden></div>
                                 <div id="searchResultContent"></div>
                             </div>
                         </div>
@@ -317,6 +328,13 @@
                         <div class="panel-main">
                             <div class="maintenance-card">
                                 <div class="maintenance-copy">
+                                    <h3>Reindexer tous les documents</h3>
+                                    <p>Applique le chunking courant a tous les magasins puis sauvegarde l'index par defaut. Operation couteuse, a executer hors campagne de charge.</p>
+                                </div>
+                                <button class="btn" id="rebuildDocumentsBtn" type="button">Reindexer le corpus</button>
+                            </div>
+                            <div class="maintenance-card">
+                                <div class="maintenance-copy">
                                     <h3>Rebuild de l&apos;index auteurs</h3>
                                     <p>Reconstruit l&apos;autocompl&eacute;tion des auteurs &agrave; partir des documents d&eacute;j&agrave; stock&eacute;s.</p>
                                 </div>
@@ -382,12 +400,13 @@
                 <span>POC Recherche Documentaire</span>
                 <div class="page-footer-links">
                     <a href="/actuator/health" target="_blank" rel="noopener">Santé</a>
-                    <a href="/swagger-ui/index.html" target="_blank" rel="noopener">Swagger</a>
+                    <a href="/swagger-ui/index.html" data-admin-only hidden target="_blank" rel="noopener">Swagger</a>
                 </div>
             </footer>
         </div>
     </div>
 
+    <script src="auth.js"></script>
     <script src="script.js"></script>
     <script src="search-metrics.js"></script>
     <script src="stats.js"></script>

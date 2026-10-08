@@ -30,6 +30,23 @@ class LuceneSearchServiceTest {
     private LuceneConfig luceneConfig;
 
     @Test
+    void searchFiltersByServerAuthorizedIdsIncludingEmptyScope() throws Exception {
+        try (var analyzer = new StandardAnalyzer(); var directory = new ByteBuffersDirectory()) {
+            addDocument(directory, analyzer, "1", "Rapport", "Alice", "note", "01/01/2026 10:15:00", "a.pdf", "texte commun");
+            addDocument(directory, analyzer, "2", "Rapport", "Bob", "note", "01/01/2026 10:15:00", "b.pdf", "texte commun");
+            when(luceneConfig.getDocumentsAnalyzer()).thenReturn(analyzer);
+            when(luceneConfig.getDocumentsIndex()).thenReturn(directory);
+            var service = new LuceneSearchService(luceneConfig);
+            var request = new SearchRequestDTO();
+            request.setQuery("commun");
+            request.setAllowedDocumentIds(java.util.Set.of(2L));
+            assertThat(service.search(request).getFragments()).extracting(SearchFragmentDTO::getId).containsExactly("2");
+            request.setAllowedDocumentIds(java.util.Set.of());
+            assertThat(service.search(request).getFragments()).isEmpty();
+        }
+    }
+
+    @Test
     void searchFuzzy_returnsMatchingFragments() throws Exception {
         StandardAnalyzer analyzer = new StandardAnalyzer();
         ByteBuffersDirectory directory = new ByteBuffersDirectory();
@@ -174,4 +191,3 @@ class LuceneSearchServiceTest {
         }
     }
 }
-

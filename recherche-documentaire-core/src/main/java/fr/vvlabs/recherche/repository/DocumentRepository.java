@@ -16,5 +16,14 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> 
     Optional<DocumentEntity> findByTitreDocument(String documentTitle);
 
     List<DocumentEntity> findByOcrIndexDoneFalse();
-}
 
+    List<DocumentEntity> findByOwnerIdIn(java.util.Collection<Long> ownerIds);
+
+    boolean existsByOwnerId(Long ownerId);
+
+    @org.springframework.data.jpa.repository.Query("select d.id from DocumentEntity d where d.ownerId in :ownerIds")
+    List<Long> findIdsByOwnerIdIn(java.util.Collection<Long> ownerIds);
+
+    @org.springframework.data.jpa.repository.Query("select d.id from DocumentEntity d")
+    List<Long> findAllIds();
+}
