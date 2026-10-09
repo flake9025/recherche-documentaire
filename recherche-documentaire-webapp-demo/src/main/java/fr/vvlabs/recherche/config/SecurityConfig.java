@@ -30,7 +30,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, UserService users) throws Exception {
         http.authorizeHttpRequests(auth -> auth
-                .requestMatchers("/login.html", "/login.js", "/auth.js", "/style.css", "/api/auth/csrf",
+                .requestMatchers("/login.html", "/login.js", "/auth.js", "/style.css", "/logo.svg", "/api/auth/csrf",
                         "/actuator/health", "/actuator/health/**", "/error").permitAll()
                 .requestMatchers("/api/admin/**", "/admin.html", "/admin.js", "/api/stats/**",
                         "/api/bulk/**", "/api/autocomplete/authors/rebuild", "/actuator/**",

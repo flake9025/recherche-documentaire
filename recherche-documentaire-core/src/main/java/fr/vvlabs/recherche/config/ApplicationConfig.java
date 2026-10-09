@@ -29,17 +29,13 @@ public class ApplicationConfig {
     private String defaultIndexType;
 
     @PostConstruct
-    public void reloadIndexAtStartup() {
-        try {
-            LocalTime t1 = LocalTime.now();
-            Object loadedStore = indexServiceFactory.getDefaultIndexService().loadDocumentIndexFromDatabase();
-            if (loadedStore instanceof ByteBuffersDirectory directory) {
-                luceneConfig.setDocumentsIndex(directory);
-            }
-            Duration duration = Duration.between(t1, LocalTime.now());
-            log.info("Index {} loaded in memory in {} ms", defaultIndexType, duration.toMillis());
-        } catch (Exception e) {
-            log.error("Load default index {} error: {}", defaultIndexType, e.getMessage(), e);
+    public void reloadIndexAtStartup() throws Exception {
+        LocalTime t1 = LocalTime.now();
+        Object loadedStore = indexServiceFactory.getDefaultIndexService().loadDocumentIndexFromDatabase();
+        if (loadedStore instanceof ByteBuffersDirectory directory) {
+            luceneConfig.setDocumentsIndex(directory);
         }
+        Duration duration = Duration.between(t1, LocalTime.now());
+        log.info("Index {} loaded in memory in {} ms", defaultIndexType, duration.toMillis());
     }
 }

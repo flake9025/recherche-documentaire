@@ -17,17 +17,47 @@ window.addEventListener('load', function() {
 
 async function initializeAi() {
     const status = document.getElementById('aiStatus');
+    const optionState = document.getElementById('aiOptionState');
+    const optIn = document.getElementById('summarizeResults');
+    optIn.checked = false;
     try {
         const response = await fetch('/api/ai/models');
         if (!response.ok) throw new Error('Catalogue IA indisponible');
         const models = await response.json();
         const select = document.getElementById('aiModel');
-        models.forEach(model => select.add(new Option(`${model.model} (${model.provider})`, model.id)));
+        models.forEach(model => {
+            const hosting = model.hosting === 'CLOUD' ? 'cloud' : model.hosting === 'LOCAL' ? 'local/on-premise' : 'destination non precisee';
+            select.add(new Option(`${model.displayName || model.model} (${hosting}, ${model.provider})`, model.id));
+        });
         select.disabled = models.length === 0;
-        document.getElementById('summarizeResults').disabled = models.length === 0;
-        status.textContent = models.length ? 'Synthese indicative, a verifier dans les sources.' : 'Synthese IA desactivee sur ce serveur.';
+        optIn.disabled = models.length === 0;
+        const updateStatus = () => {
+            const model = models.find(item => item.id === select.value);
+            const hosting = model?.hosting === 'CLOUD' ? 'cloud'
+                : model?.hosting === 'LOCAL' ? 'local' : 'destination a verifier';
+            optionState.textContent = !model ? 'Indisponible'
+                : optIn.checked ? `Activee - ${hosting}` : 'Optionnelle';
+            optionState.dataset.active = String(Boolean(model) && optIn.checked);
+            if (!model) {
+                status.textContent = 'Synthese IA desactivee sur ce serveur.';
+                return;
+            }
+            const destination = model.hosting === 'CLOUD'
+                ? 'Modele cloud : le texte extrait des sources selectionnees, parfois integral pour les petits documents, est envoye hors du serveur. Verifier la politique de donnees avant activation.'
+                : model.hosting === 'LOCAL'
+                    ? 'Modele configure en local/on-premise.'
+                    : 'Destination non precisee : verifier la configuration avant de transmettre des donnees sensibles.';
+            status.textContent = `Synthese indicative, a verifier dans les sources. ${destination}`;
+        };
+        select.addEventListener('change', () => {
+            optIn.checked = false;
+            updateStatus();
+        });
+        optIn.addEventListener('change', updateStatus);
+        updateStatus();
     } catch (error) {
         status.textContent = error.message;
+        optionState.textContent = 'Indisponible';
     }
 }
 
@@ -47,7 +77,7 @@ function displaySummary(data) {
         data.summary.sources.forEach(source => {
             const link = document.createElement('a');
             link.href = `/api/documents/${encodeURIComponent(source.documentId)}/file`;
-            link.textContent = `[${source.number}] ${source.title || 'Document'}`;
+            link.textContent = `[${source.number}] ${source.title || 'Document'}${source.partial ? ' (contexte abrege)' : ''}`;
             link.target = '_blank';
             link.rel = 'noopener';
             box.append(link, document.createElement('br'));
@@ -81,8 +111,8 @@ function initEventListeners() {
 
     document.getElementById('indexFile').addEventListener('change', handleFileChange);
 
-    document.getElementById('searchQuery').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+    document.getElementById('searchQuery').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
             performSearch();
         }
@@ -106,10 +136,41 @@ function initEventListeners() {
 
     setupFileDrop();
     setupTabs();
+    setupSearchFilters();
     setDefaultDepositDate();
 
     // Initialiser l'autocomplétion sur le filtre auteur
     setupAuthorAutocomplete();
+}
+
+function readSearchFilters() {
+    const category = document.getElementById('filterCategory').value;
+    const filters = {
+        category: category !== 'Tout' ? category.toUpperCase() : null,
+        author: document.getElementById('filterAuthor').value.trim() || null,
+        dateFrom: document.getElementById('filterDateFrom').value.trim() || null,
+        dateTo: document.getElementById('filterDateTo').value.trim() || null,
+        sort: document.getElementById('filterSort').value === 'Plus récents' ? 'DESC' : 'ASC'
+    };
+    const activeCount = [filters.category, filters.author, filters.dateFrom, filters.dateTo].filter(Boolean).length;
+    return { filters, activeCount };
+}
+
+function updateSearchFilterSummary() {
+    const { activeCount } = readSearchFilters();
+    const badge = document.getElementById('activeFilterCount');
+    const label = activeCount ? `${activeCount} filtre${activeCount > 1 ? 's' : ''}` : 'Aucun filtre';
+    if (badge.textContent !== label) badge.textContent = label;
+    badge.dataset.active = String(activeCount > 0);
+}
+
+function setupSearchFilters() {
+    ['filterCategory', 'filterAuthor', 'filterDateFrom', 'filterDateTo'].forEach(id => {
+        const input = document.getElementById(id);
+        input.addEventListener('input', updateSearchFilterSummary);
+        input.addEventListener('change', updateSearchFilterSummary);
+    });
+    updateSearchFilterSummary();
 }
 
 // ==================== GESTION FICHIER ====================
@@ -194,11 +255,7 @@ function activateTab(target) {
 // ==================== RECHERCHE ====================
 async function performSearch() {
     const query = document.getElementById('searchQuery').value;
-    const categoryFilter = document.getElementById('filterCategory').value;
-    const authorFilter = document.getElementById('filterAuthor').value;
-    const dateFrom = document.getElementById('filterDateFrom').value;
-    const dateTo = document.getElementById('filterDateTo').value;
-    const sort = document.getElementById('filterSort').value;
+    const { filters, activeCount } = readSearchFilters();
 
     const loading = document.getElementById('searchLoading');
     const error = document.getElementById('searchError');
@@ -209,12 +266,7 @@ async function performSearch() {
     const resultsRuntime = document.getElementById('resultsRuntime');
 
     const hasQuery = query.trim().length > 0;
-    const hasCategory = categoryFilter !== 'Tout';
-    const hasAuthor = authorFilter.trim().length > 0;
-    const hasDateFrom = dateFrom.trim().length > 0;
-    const hasDateTo = dateTo.trim().length > 0;
-
-    if (!hasQuery && !hasCategory && !hasAuthor && !hasDateFrom && !hasDateTo) {
+    if (!hasQuery && !activeCount) {
         showError(error, 'Veuillez entrer une requête ou un filtre');
         return;
     }
@@ -231,11 +283,7 @@ async function performSearch() {
     try {
         const payload = {
             query: hasQuery ? query.trim() : null,
-            category: categoryFilter !== 'Tout' ? categoryFilter.toUpperCase() : null,
-            author: hasAuthor ? authorFilter.trim() : null,
-            dateFrom: hasDateFrom ? dateFrom.trim() : null,
-            dateTo: hasDateTo ? dateTo.trim() : null,
-            sort: sort === 'Plus récents' ? 'DESC' : 'ASC',
+            ...filters,
             summarize: document.getElementById('summarizeResults').checked,
             aiModel: document.getElementById('aiModel').value
         };
@@ -605,6 +653,7 @@ function displayAuthorSuggestions(suggestions) {
         item.addEventListener('click', function() {
             const author = this.getAttribute('data-author');
             document.getElementById('filterAuthor').value = author;
+            updateSearchFilterSummary();
             hideAutocomplete();
             // Focus sur le bouton de recherche pour faciliter la soumission
             document.getElementById('searchBtn').focus();

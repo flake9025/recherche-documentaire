@@ -26,6 +26,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Optional;
 import java.util.Set;
@@ -84,6 +86,16 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void loginAssetsArePublicButTheDocumentPortalStillRequiresAuthentication() throws Exception {
+        mvc.perform(get("/login.html")).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("id=\"loginForm\"")));
+        mvc.perform(get("/logo.svg")).andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("image/svg+xml"));
+        mvc.perform(get("/index.html")).andExpect(status().isFound())
+                .andExpect(redirectedUrl("/login.html"));
+    }
+
+    @Test
     void realLoginCreatesSessionThatCanReadOnlyAuthorizedDocuments() throws Exception {
         MockHttpSession session = login("alice");
         mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
@@ -129,14 +141,15 @@ class SecurityIntegrationTest {
             org.assertj.core.api.Assertions.assertThat(fragments)
                     .extracting(fr.vvlabs.recherche.dto.SearchFragmentDTO::getId).containsExactly("10");
             return new fr.vvlabs.recherche.service.ai.AiGateway.Summary("Resume [1]", "local",
-                    List.of(new fr.vvlabs.recherche.service.ai.AiGateway.Source(1, "10", "Public", "/api/documents/10/file")));
+                    List.of(new fr.vvlabs.recherche.service.ai.AiGateway.Source(1, "10", "Public", "/api/documents/10/file", false)));
         });
         mvc.perform(post("/api/search/").session(login("alice")).with(csrf())
                 .contentType("application/json")
                 .content("{\"query\":\"rapport\",\"allowedDocumentIds\":[20],\"summarize\":true,\"aiModel\":\"local\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.nbResults").value(1))
                 .andExpect(jsonPath("$.fragments[0].id").value("10"))
-                .andExpect(jsonPath("$.summary.sources[0].documentId").value("10"));
+                .andExpect(jsonPath("$.summary.sources[0].documentId").value("10"))
+                .andExpect(jsonPath("$.summary.sources[0].partial").value(false));
         var captor = org.mockito.ArgumentCaptor.forClass(fr.vvlabs.recherche.dto.SearchRequestDTO.class);
         verify(searchService).search(captor.capture());
         org.assertj.core.api.Assertions.assertThat(captor.getValue().getAllowedDocumentIds()).containsExactly(10L);
@@ -158,6 +171,19 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void revokedAccessDuringGenerationDiscardsSummaryAndUnauthorizedFragments() throws Exception {
+        when(documents.findIdsByOwnerIdIn(Set.of(1L))).thenReturn(List.of(10L), List.of(10L), List.of());
+        when(gateway.summarize(eq("local"), any(), any())).thenReturn(
+                new fr.vvlabs.recherche.service.ai.AiGateway.Summary("Ancien resume [1]", "local",
+                        List.of(new fr.vvlabs.recherche.service.ai.AiGateway.Source(1, "10", "Public", "/api/documents/10/file", false))));
+        mvc.perform(post("/api/search/").session(login("alice")).with(csrf())
+                .contentType("application/json").content("{\"query\":\"rapport\",\"summarize\":true,\"aiModel\":\"local\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nbResults").value(0))
+                .andExpect(jsonPath("$.fragments").isEmpty()).andExpect(jsonPath("$.summary").isEmpty())
+                .andExpect(jsonPath("$.summaryError").value("Droits documentaires modifies pendant la synthese. Relancer la recherche."));
+    }
+
+    @Test
     void fileAccessChecksOwnerAndAutocompleteUsesOnlyVisibleAuthors() throws Exception {
         when(documents.findById(20L)).thenReturn(Optional.of(
                 new fr.vvlabs.recherche.model.DocumentEntity().setId(20L).setOwnerId(2L)));
@@ -168,6 +194,35 @@ class SecurityIntegrationTest {
         verify(documentService, never()).getFileResource(any());
         mvc.perform(get("/api/autocomplete/authors?query=Pu").session(session))
                 .andExpect(status().isOk()).andExpect(jsonPath("$[0].author").value("Public"));
+    }
+
+    @Test
+    void synthesisKeepsOriginalQuestionWithoutSearchSyntax() throws Exception {
+        var controller = context.getBean(SearchController.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "wildcardEnabled", true);
+        when(searchService.getType()).thenReturn("bert");
+        when(gateway.summarize(eq("local"), eq("controle circuit"), any())).thenReturn(
+                new fr.vvlabs.recherche.service.ai.AiGateway.Summary("Resume [1]", "local", List.of()));
+        try {
+            mvc.perform(post("/api/search/").session(login("alice")).with(csrf())
+                    .contentType("application/json")
+                    .content("{\"query\":\"controle circuit\",\"summarize\":true,\"aiModel\":\"local\"}"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.summary.text").value("Resume [1]"));
+            verify(gateway).summarize(eq("local"), eq("controle circuit"), any());
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(controller, "wildcardEnabled", false);
+        }
+    }
+
+    @Test
+    void inaccessibleSourceKeepsResultsAndExplainsWhySynthesisStopped() throws Exception {
+        when(gateway.summarize(any(), any(), any())).thenThrow(
+                new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        mvc.perform(post("/api/search/").session(login("alice")).with(csrf())
+                .contentType("application/json")
+                .content("{\"query\":\"rapport\",\"summarize\":true,\"aiModel\":\"local\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.nbResults").value(1))
+                .andExpect(jsonPath("$.summaryError").value("Source documentaire inaccessible ; relancer la recherche."));
     }
 
     private MockHttpSession login(String username) throws Exception {
@@ -191,7 +246,12 @@ class SecurityIntegrationTest {
     @EnableWebMvc
     @Import({SecurityConfig.class, AuthController.class, DocumentController.class, UserAdminController.class,
             SearchController.class, AutocompleteController.class, ApiErrorHandler.class})
-    static class Config {
+    static class Config implements WebMvcConfigurer {
+        @Override
+        public void addResourceHandlers(ResourceHandlerRegistry registry) {
+            registry.addResourceHandler("/**").addResourceLocations("classpath:/static/");
+        }
+
         @Bean UserRepository users() { return mock(UserRepository.class); }
         @Bean DocumentRepository documents() { return mock(DocumentRepository.class); }
         @Bean DocumentService documentService() { return mock(DocumentService.class); }

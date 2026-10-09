@@ -93,10 +93,12 @@ app:
     models:
       ollama-mistral:
         provider: OLLAMA
+        hosting: ${APP_AI_OLLAMA_HOSTING:LOCAL}
         base-url: ${APP_AI_OLLAMA_URL:http://localhost:11434}
         model: ${APP_AI_OLLAMA_MODEL:mistral}
       mistral-local:
         provider: OPENAI
+        hosting: ${APP_AI_MISTRAL_HOSTING:LOCAL}
         # Serveur on-premise compatible OpenAI (vLLM, llama.cpp, etc.), pas l'API cloud Mistral.
         base-url: ${APP_AI_MISTRAL_URL:http://localhost:8000/v1}
         model: ${APP_AI_MISTRAL_MODEL:mistral}

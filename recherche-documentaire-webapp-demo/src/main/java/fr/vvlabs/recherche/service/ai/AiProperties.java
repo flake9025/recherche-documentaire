@@ -30,19 +30,30 @@ public class AiProperties {
     private int maxContextChars = 12000;
     @Min(1) @Max(4096)
     private int maxOutputTokens = 512;
+    private String defaultModel = "";
+    private boolean cacheEnabled;
+    @Min(1) @Max(300)
+    private int cacheTtlSeconds = 60;
     @Valid
     private Map<String, Model> models = new LinkedHashMap<>();
 
-    public enum Provider { OLLAMA, OPENAI }
+    public enum Provider { OLLAMA, OPENAI, LITELLM }
+    public enum Hosting { LOCAL, CLOUD, UNSPECIFIED }
 
     @Data
     public static class Model {
+        private boolean enabled = true;
         @NotNull
         private Provider provider;
         @NotNull
         private URI baseUrl;
         @NotBlank
         private String model;
+        @NotBlank
+        private String cacheVersion = "1";
+        private String displayName = "";
+        @NotNull
+        private Hosting hosting = Hosting.UNSPECIFIED;
         private String apiKey = "";
     }
 }

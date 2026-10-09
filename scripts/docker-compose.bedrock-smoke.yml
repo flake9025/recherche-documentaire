@@ -1,0 +1,19 @@
+# Override de fixture uniquement ; aucune requete AWS et aucun modele reel.
+services:
+  mock-vllm:
+    environment:
+      MOCK_INFERENCE_MODEL: openai.gpt-5.4
+  litellm:
+    environment:
+      APP_AI_GATEWAY_API_KEY: ${APP_AI_GATEWAY_API_KEY:?Secret de fixture requis}
+      APP_AI_CACHE_PASSWORD: ${APP_AI_CACHE_PASSWORD:?Secret de fixture requis}
+      LITELLM_BEDROCK_MODEL: bedrock_mantle/openai.gpt-5.4
+      APP_AI_BEDROCK_URL: http://mock-vllm:8000/openai/v1
+      APP_AI_BEDROCK_API_KEY: ${APP_AI_VLLM_API_KEY:?Secret de fixture requis}
+    volumes:
+      - ./config/litellm-bedrock.yml:/app/config.yaml:ro
+  app:
+    environment:
+      SPRING_PROFILES_INCLUDE: bedrock
+      APP_AI_DEFAULT_MODEL: bedrock
+      APP_AI_BEDROCK_MODEL: openai.gpt-5.4

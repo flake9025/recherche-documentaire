@@ -1,0 +1,67 @@
+# Fixture isolee : PostgreSQL et documents ephemeres, API vLLM simulee, aucun poids de modele.
+# Utiliser avec --project-directory . et l'overlay docker-compose.ai.yml.
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: recherche_documentaire
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${AI_SMOKE_DB_PASSWORD:?Secret de fixture requis}
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d recherche_documentaire"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  mock-vllm:
+    image: python:3.13.14-slim-bookworm
+    command: ["python", "/fixture/mock-vllm.py"]
+    environment:
+      APP_AI_VLLM_API_KEY: ${APP_AI_VLLM_API_KEY:?Secret de fixture requis}
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./scripts/mock-vllm.py:/fixture/mock-vllm.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: ${AI_SMOKE_APP_IMAGE:?Image de fixture requise}
+    build: .
+    ports:
+      - "127.0.0.1::8080"
+    networks:
+      - default
+      - fixture-ingress
+    environment:
+      SPRING_PROFILES_ACTIVE: lucene
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/recherche_documentaire
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${AI_SMOKE_DB_PASSWORD:?Secret de fixture requis}
+      APP_BOOTSTRAP_PASSWORD: ${APP_BOOTSTRAP_PASSWORD:?Secret de fixture requis}
+      APP_DEMO_USERS_ENABLED: "false"
+    tmpfs:
+      - /app/storage
+      - /app/lucene-suggest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+networks:
+  default:
+    internal: true
+  fixture-ingress:

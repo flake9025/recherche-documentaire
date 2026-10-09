@@ -27,38 +27,38 @@
         <dependency>
             <groupId>net.sourceforge.tess4j</groupId>
             <artifactId>tess4j</artifactId>
-            <version>5.15.0</version>
+            <version>5.20.0</version>
         </dependency>
 
         <!-- pdfbox (partage par pdfbox et tika) -->
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>3.0.6</version>
+            <version>${pdfbox.version}</version>
         </dependency>
 
         <!-- tika -->
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-core</artifactId>
-            <version>3.2.0</version>
+            <version>${tika.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-parser-pdf-module</artifactId>
-            <version>3.2.0</version>
+            <version>${tika.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.tika</groupId>
             <artifactId>tika-parser-text-module</artifactId>
-            <version>3.2.0</version>
+            <version>${tika.version}</version>
         </dependency>
 
         <!-- markdown -->
         <dependency>
             <groupId>org.commonmark</groupId>
             <artifactId>commonmark</artifactId>
-            <version>0.24.0</version>
+            <version>0.30.0</version>
         </dependency>
 
         <!-- xml/drawio : StAX + Inflater du JDK, jsoup fourni transitivement par core -->

@@ -3,7 +3,7 @@
 # docker compose -f docker-compose.qdrant-cluster.yml --profile benchmark up --build
 
 x-qdrant: &qdrant
-  image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+  image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.2}
   environment:
     QDRANT__CLUSTER__ENABLED: "true"
   cpus: ${QDRANT_CPU_LIMIT:-1.0}
@@ -11,7 +11,7 @@ x-qdrant: &qdrant
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine
     environment:
       POSTGRES_DB: recherche_documentaire
       POSTGRES_USER: postgres
@@ -55,7 +55,7 @@ services:
       - qdrant
 
   qdrant-gateway:
-    image: nginx:1.28-alpine
+    image: nginx:1.28.2-alpine
     ports:
       - "127.0.0.1:6342:80"
     volumes:
@@ -73,7 +73,7 @@ services:
       start_period: 10s
 
   qdrant-baseline:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.2}
     profiles: ["benchmark"]
     cpus: ${QDRANT_CPU_LIMIT:-1.0}
     mem_limit: ${QDRANT_MEMORY_LIMIT:-1g}

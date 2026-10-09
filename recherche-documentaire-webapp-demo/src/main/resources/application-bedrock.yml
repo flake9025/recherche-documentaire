@@ -1,0 +1,18 @@
+app:
+  ai:
+    default-model: ${APP_AI_DEFAULT_MODEL:bedrock}
+    cache-enabled: ${APP_AI_CACHE_ENABLED:false}
+    cache-ttl-seconds: ${APP_AI_CACHE_TTL_SECONDS:60}
+    models:
+      ollama-mistral:
+        enabled: false
+      mistral-local:
+        enabled: false
+      bedrock:
+        provider: LITELLM
+        hosting: CLOUD
+        display-name: ${APP_AI_BEDROCK_MODEL:bedrock}
+        base-url: ${APP_AI_GATEWAY_URL:http://localhost:4000/v1}
+        model: bedrock
+        api-key: ${APP_AI_GATEWAY_API_KEY:}
+        cache-version: ${APP_AI_BEDROCK_MODEL:unconfigured}:${APP_AI_BEDROCK_MODEL_REVISION:1}

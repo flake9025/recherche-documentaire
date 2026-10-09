@@ -61,6 +61,7 @@ public class SearchController {
         SearchService searchService = searchServiceFactory.getDefaultSearchService();
 
         String text = effectiveRequest.getQuery() == null ? "" : effectiveRequest.getQuery().trim();
+        String summaryQuery = text;
         if (!IndexType.LUCENE.equals(searchService.getType())) {
             if (wildcardEnabled && text.length() > 3) {
                 text += "*";
@@ -84,13 +85,23 @@ public class SearchController {
         result.setNbResults(result.getFragments().size());
         if (effectiveRequest.isSummarize()) {
             try {
-                var summary = aiGateway.summarize(effectiveRequest.getAiModel(), effectiveRequest.getQuery(), result.getFragments());
+                var summary = aiGateway.summarize(effectiveRequest.getAiModel(), summaryQuery, result.getFragments());
                 result.setSummary(new SearchResultDTO.SummaryDTO(summary.text(), summary.model(), summary.sources().stream()
                         .map(source -> new SearchResultDTO.SummarySourceDTO(source.number(), source.documentId(),
-                                source.title(), source.fileUrl())).toList()));
+                                source.title(), source.fileUrl(), source.partial())).toList()));
             } catch (org.springframework.web.server.ResponseStatusException exception) {
                 log.warn("AI synthesis failed status={}", exception.getStatusCode().value());
-                result.setSummaryError(exception.getReason());
+                result.setSummaryError(exception.getReason() == null
+                        ? "Source documentaire inaccessible ; relancer la recherche." : exception.getReason());
+            }
+            var visibleAfterSummary = access.visibleDocumentIds();
+            var authorizedFragments = result.getFragments().stream()
+                    .filter(fragment -> visibleAfterSummary.contains(Long.valueOf(fragment.getId()))).toList();
+            if (authorizedFragments.size() != result.getFragments().size()) {
+                result.setFragments(authorizedFragments);
+                result.setNbResults(authorizedFragments.size());
+                result.setSummary(null);
+                result.setSummaryError("Droits documentaires modifies pendant la synthese. Relancer la recherche.");
             }
         }
         long responseTimeMs = Duration.between(overallStartTime, LocalTime.now()).toMillis();

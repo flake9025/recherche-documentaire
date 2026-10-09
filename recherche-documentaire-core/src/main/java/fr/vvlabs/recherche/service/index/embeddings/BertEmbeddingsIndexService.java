@@ -39,6 +39,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
     // Le snapshot complet du store BERT est persiste dans la meme table que Lucene,
     // mais avec un nom d'index dedie.
     private static final String INDEX_NAME = "bert_embeddings";
+    private static final int SNAPSHOT_MAGIC = 0x42455254;
+    private static final int SNAPSHOT_VERSION = 1;
 
     private final BertEmbeddingsService bertEmbeddingsService;
     private final BertEmbeddingsStoreFactory bertEmbeddingsStoreFactory;
@@ -125,12 +127,7 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         }
 
         log.debug("Loading embeddings index from Database ...");
-        Optional<BertEmbeddingsIndexEntity> entityOpt = Optional.empty();
-        try {
-            entityOpt = indexRepository.findByIndexName(INDEX_NAME);
-        } catch (Exception e) {
-            log.warn("Loading embeddings index from Database KO : {}", e.getMessage());
-        }
+        Optional<BertEmbeddingsIndexEntity> entityOpt = indexRepository.findByIndexName(INDEX_NAME);
         if (entityOpt.isEmpty()) {
             log.debug("Embeddings index not found, creating empty store ...");
             bertEmbeddingsStoreFactory.getDefaultStore().clear();
@@ -140,12 +137,30 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         byte[] indexData = cipherService.decrypt(entityOpt.get().getIndexData());
         List<BertEmbeddingDocument> entities = new ArrayList<>();
         try (DataInputStream dis = new DataInputStream(new ByteArrayInputStream(indexData))) {
+            if (dis.readInt() != SNAPSHOT_MAGIC || dis.readInt() != SNAPSHOT_VERSION) {
+                throw new IOException("Unsupported BERT snapshot format");
+            }
             // On recharge tout le store en RAM pour que la recherche BERT
             // n'ait pas a relire la base a chaque requete.
             int chunkCount = dis.readInt();
-            for (int i = 0; i < chunkCount; i++) {
-                entities.add(readEmbedding(dis));
+            if (chunkCount < 0 || chunkCount > dis.available() / Integer.BYTES) {
+                throw new IOException("Invalid BERT snapshot chunk count");
             }
+            for (int i = 0; i < chunkCount; i++) {
+                BertEmbeddingDocument document = readEmbedding(dis);
+                if (!entities.isEmpty() && document.embedding().length != entities.getFirst().embedding().length) {
+                    throw new IOException("Inconsistent BERT snapshot vector dimensions");
+                }
+                entities.add(document);
+            }
+            if (dis.available() != 0) {
+                throw new IOException("Unexpected trailing BERT snapshot data");
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException(
+                    "Snapshot BERT invalide ou incompatible. Supprimer le snapshot 'bert_embeddings'"
+                            + " de bert_embeddings_index, puis reconstruire l'index.",
+                    exception);
         }
 
         BertEmbeddingsStore store = bertEmbeddingsStoreFactory.getDefaultStore();
@@ -168,6 +183,8 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         List<BertEmbeddingDocument> entities = store.findAll();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (DataOutputStream dos = new DataOutputStream(baos)) {
+            dos.writeInt(SNAPSHOT_MAGIC);
+            dos.writeInt(SNAPSHOT_VERSION);
             dos.writeInt(entities.size());
             for (BertEmbeddingDocument entity : entities) {
                 writeEmbedding(dos, entity);
@@ -214,6 +231,10 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
         long documentId = dis.readLong();
         int chunkIndex = dis.readInt();
         int chunkCount = dis.readInt();
+        if (documentId <= 0 || chunkCount < 1 || chunkCount > BertEmbeddingDocument.POINT_ID_FACTOR
+                || chunkIndex < 0 || chunkIndex >= chunkCount) {
+            throw new IOException("Invalid BERT snapshot chunk identity");
+        }
         String title = readString(dis);
         String author = readString(dis);
         String category = readString(dis);
@@ -223,8 +244,10 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
             depotDateTime = LocalDateTime.parse(readString(dis));
         }
         String contentText = readNullableString(dis);
-        byte[] embeddingData = new byte[dis.readInt()];
-        dis.readFully(embeddingData);
+        byte[] embeddingData = readBytes(dis);
+        if (embeddingData.length == 0 || embeddingData.length % Float.BYTES != 0) {
+            throw new IOException("Invalid BERT snapshot vector size");
+        }
         return new BertEmbeddingDocument(
                 documentId,
                 chunkIndex,
@@ -257,8 +280,16 @@ public class BertEmbeddingsIndexService implements IndexService<Void> {
     }
 
     private String readString(DataInputStream dis) throws IOException {
-        byte[] bytes = new byte[dis.readInt()];
+        return new String(readBytes(dis), StandardCharsets.UTF_8);
+    }
+
+    private byte[] readBytes(DataInputStream dis) throws IOException {
+        int length = dis.readInt();
+        if (length < 0 || length > dis.available()) {
+            throw new IOException("Invalid BERT snapshot field length");
+        }
+        byte[] bytes = new byte[length];
         dis.readFully(bytes);
-        return new String(bytes, StandardCharsets.UTF_8);
+        return bytes;
     }
 }

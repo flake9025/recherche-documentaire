@@ -41,14 +41,15 @@ def pdf_document(lines: list[str]) -> bytes:
     return bytes(data)
 
 
-def upload(session: Session, name: str, tag: str, spoofed_owner: int):
-    lines = [f"Rapport synthetique {name}. Debut du document {tag}."]
-    if name == "alice":
-        lines += [f"Section {index}: recherche documentaire, maintenance, archivage et suivi du projet."
-                  for index in range(180)]
-    else:
-        lines += ["Recherche documentaire : plan de maintenance et archivage du projet."]
-    lines += [f"Fin du document : FIN_SMOKE_{tag}_{name}."]
+def upload(session: Session, name: str, tag: str, spoofed_owner: int, lines: list[str] | None = None):
+    if lines is None:
+        lines = [f"Rapport synthetique {name}. Debut du document {tag}."]
+        if name == "alice":
+            lines += [f"Section {index}: recherche documentaire, maintenance, archivage et suivi du projet."
+                      for index in range(180)]
+        else:
+            lines += ["Recherche documentaire : plan de maintenance et archivage du projet."]
+        lines += [f"Fin du document : FIN_SMOKE_{tag}_{name}."]
     document = pdf_document(lines)
     boundary = "smoke-" + uuid.uuid4().hex
     fields = {

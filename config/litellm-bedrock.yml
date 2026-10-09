@@ -1,0 +1,32 @@
+model_list:
+  - model_name: bedrock
+    litellm_params:
+      model: os.environ/LITELLM_BEDROCK_MODEL
+      api_base: os.environ/APP_AI_BEDROCK_URL
+      api_key: os.environ/APP_AI_BEDROCK_API_KEY
+      additional_drop_params: ["temperature"]
+      store: false
+
+litellm_settings:
+  telemetry: false
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+  cache: true
+  cache_params:
+    type: redis
+    host: ai-cache
+    port: 6379
+    password: os.environ/APP_AI_CACHE_PASSWORD
+    mode: default_off
+    ttl: 60
+    supported_call_types: ["acompletion"]
+
+router_settings:
+  num_retries: 1
+  timeout: 50
+
+general_settings:
+  master_key: os.environ/APP_AI_GATEWAY_API_KEY
+  disable_spend_logs: true
+  store_prompts_in_spend_logs: false
+  forward_client_headers_to_llm_api: false

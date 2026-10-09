@@ -1,5 +1,5 @@
 # Build du jar Spring Boot dans une image Maven avec JDK 25.
-FROM maven:3.9.11-eclipse-temurin-25 AS build
+FROM maven:3.10.0-eclipse-temurin-25-noble AS build
 WORKDIR /workspace
 
 # On copie le workspace multi-modules necessaire au build de la webapp Spring Boot.
@@ -14,13 +14,13 @@ RUN mvn -B -pl recherche-documentaire-webapp-demo -am -DskipTests package
 # Les dependances (rarement modifiees) et le code applicatif
 # occupent des couches Docker separees : seule la couche applicative
 # est retransferee lors d'un rebuild apres une simple modification du code.
-FROM eclipse-temurin:25-jre AS extract
+FROM eclipse-temurin:25-jre-noble AS extract
 WORKDIR /workspace
 COPY --from=build /workspace/recherche-documentaire-webapp-demo/target/poc-recherche-documentaire-*.jar app.jar
-RUN java -Djarmode=layertools -jar app.jar extract --destination extracted
+RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination extracted
 
 # Image d'execution minimale avec un JRE 25.
-FROM eclipse-temurin:25-jre
+FROM eclipse-temurin:25-jre-noble
 WORKDIR /app
 
 RUN apt-get update \

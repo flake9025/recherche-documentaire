@@ -5,22 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connexion - Portail documentaire</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="/logo.svg" type="image/svg+xml">
 </head>
-<body>
-    <main class="page-shell">
-        <section class="panel">
-            <h1>Connexion au portail documentaire</h1>
-            <form id="loginForm">
-                <label class="control">Identifiant
-                    <input class="search-box" name="username" autocomplete="username" required maxlength="80">
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-card" aria-labelledby="loginTitle">
+            <div class="login-brand">
+                <img src="/logo.svg" class="brand-mark" width="80" height="80" alt="">
+                <span class="page-eyebrow">Portail documentaire</span>
+                <h1 id="loginTitle">Bienvenue dans votre espace</h1>
+                <p>Retrouvez vos documents et les informations qui comptent.</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <label class="control" for="loginUsername">Identifiant
+                    <input class="search-box" id="loginUsername" name="username" autocomplete="username"
+                           placeholder="Votre identifiant" required maxlength="80" autocapitalize="none" spellcheck="false">
                 </label>
-                <label class="control">Mot de passe
-                    <input class="search-box" type="password" name="password" autocomplete="current-password" required>
+                <label class="control" for="loginPassword">Mot de passe
+                    <input class="search-box" id="loginPassword" type="password" name="password"
+                           autocomplete="current-password" placeholder="Votre mot de passe" required>
                 </label>
                 <p id="loginError" role="alert"></p>
                 <button class="btn" type="submit">Se connecter</button>
             </form>
+            <p class="login-note">L'acc&egrave;s aux documents d&eacute;pend des droits de votre compte.</p>
         </section>
+        <p class="login-footer">Recherche Documentaire &middot; Espace de d&eacute;monstration</p>
     </main>
     <script src="auth.js"></script>
     <script src="login.js"></script>

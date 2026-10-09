@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 @RequiredArgsConstructor
@@ -31,7 +32,15 @@ public class UserBootstrap implements ApplicationRunner {
         if (users.count() != 0) {
             return;
         }
-        UserAdminController.validatePassword(bootstrapPassword);
+        try {
+            UserAdminController.validatePassword(bootstrapPassword);
+        } catch (ResponseStatusException exception) {
+            throw new IllegalStateException(
+                    "APP_BOOTSTRAP_PASSWORD invalide : definir un mot de passe initial de 12 caracteres minimum"
+                            + " et 72 octets UTF-8 maximum dans l'environnement du conteneur."
+                            + " Recreer le conteneur pour appliquer la modification.",
+                    exception);
+        }
         create("admin", UserRole.ADMIN, null);
         if (demoEnabled) {
             var manager = create("carol", UserRole.MANAGER, null);

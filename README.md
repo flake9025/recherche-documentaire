@@ -32,7 +32,7 @@ Ce n'est pas un produit fini. C'est un POC structure pour permettre des discussi
 - API REST Swagger + UI web locale
 - connexion par session, comptes PostgreSQL et administration des utilisateurs
 - magasins documentaires cloisonnes : utilisateur, responsable, administrateur
-- synthese optionnelle des resultats par une gateway IA on-premise (Ollama / API compatible OpenAI)
+- synthese optionnelle via une gateway IA locale ou cloud (Ollama, vLLM/Mistral, AWS Bedrock)
 
 ## Comptes, magasins et administration
 
@@ -70,6 +70,46 @@ Le bootstrap ne recree pas les comptes supprimes et ne change pas les mots de
 passe au redemarrage. `APP_DEMO_USERS_ENABLED=false` cree seulement `admin`.
 Changer les mots de passe de chaque compte pour des essais realistes.
 
+### Depannage du demarrage sur une base existante
+
+Une erreur fatale issue de `UserBootstrap` indiquant un mot de passe invalide
+signifie que `app_user` est vide et que `APP_BOOTSTRAP_PASSWORD` est absent ou
+ne respecte pas la limite de 12 caracteres minimum / 72 octets UTF-8 maximum.
+Definir le secret dans **l'environnement du conteneur**, pas seulement dans
+le shell du NAS. Un simple `docker restart` n'applique pas une nouvelle variable :
+recreer le conteneur avec la configuration corrigee.
+
+Pour un deploiement Compose utilisant un fichier de secrets non versionne :
+
+```bash
+docker compose --env-file .env.nas -f docker-compose.qdrant.yml up -d --force-recreate app
+```
+
+Le fichier `.env.nas` doit definir `APP_BOOTSTRAP_PASSWORD` ; ne pas partager
+sa valeur ni la versionner. `APP_DEMO_USERS_ENABLED=false` evite de creer des
+comptes de demonstration partageant le secret administrateur.
+
+Une `EOFException` lors de la lecture du snapshot BERT est un probleme distinct :
+son contenu est tronque ou correspond a un ancien format binaire. Les nouveaux
+snapshots portent une signature et une version ; un snapshot invalide est
+refuse **avant de remplacer le store**, et un echec de chargement interrompt le
+demarrage au lieu de servir silencieusement un index obsolete.
+
+La compatibilite des anciens snapshots BERT n'est pas conservee. Pour repartir
+sans ce snapshot, arreter les instances BERT partageant la base, puis executer
+dans la base PostgreSQL du POC :
+
+```sql
+DELETE FROM bert_embeddings_index WHERE index_name = 'bert_embeddings';
+```
+
+Cette commande ne supprime ni les comptes ni les documents. Au redemarrage,
+le store BERT est remis a vide ; il est reconstruit depuis les documents lors
+de la recherche ou via la maintenance. Ne pas faire tourner d'anciennes et
+de nouvelles images ecrivant des formats differents dans la meme ligne de
+snapshot. Les donnees locales du poste et celles d'un NAS sont independantes :
+un reset local ne remet pas a zero la base distante du NAS.
+
 La page `/login.html` ouvre une session. La page `/admin.html`, reservee aux
 administrateurs, liste, ajoute, modifie et supprime les utilisateurs
 (`/api/admin/users`). La suppression d'un compte possedant des documents ou
@@ -78,6 +118,15 @@ ses utilisateurs. Le dernier administrateur actif ne peut pas etre retrograde
 ou desactive ; un administrateur ne peut pas supprimer son propre compte.
 Swagger, la maintenance, le bulk et les statistiques globales sont reserves
 aux administrateurs. `/actuator/health` reste public.
+
+Le login est centre et partage un logo local avec le portail, sans police ni
+ressource graphique externe. La recherche utilise un champ compact de **50 px**
+de hauteur initiale et minimale, redimensionnable verticalement : **Entree**
+lance la recherche et **Maj + Entree** insere une nouvelle ligne. Sur mobile,
+la recherche est accessible d'abord, avec un en-tete compact et des commandes
+tactiles. Les filtres et les options IA sont replies par defaut ; leurs badges
+indiquent les filtres actifs et l'activation/destination de la synthese.
+L'avertissement cloud precede la case d'activation dans les options IA.
 
 Les clients API doivent recuperer `/api/auth/csrf`, conserver le cookie, puis
 poster `username` et `password` en formulaire sur `/api/auth/login` avec le
@@ -90,7 +139,258 @@ Les documents existants sans proprietaire ne sont pas attribues arbitrairement :
 ils restent visibles seulement par l'administrateur. La migration SQL est
 additive et ne supprime ni documents ni snapshots.
 
-## Synthese IA on-premise
+### Cloisonnement et chiffrement : deux protections distinctes
+
+Le POC utilise une collection partagee dans Qdrant ou Milvus. Il n'envoie pas
+de `userId` ou d'`ownerId` dans les chunks : la relation document/proprietaire
+reste dans PostgreSQL. A chaque recherche, `DocumentAccessService` calcule les
+IDs autorises selon le role et les rattachements, puis l'application impose
+un filtre `documentId` avant le classement/limite dans le store. Un utilisateur
+ne peut pas fournir son propre perimetre. Le sharding Qdrant distribue les
+points ; il ne cree pas a lui seul des frontieres d'autorisation par utilisateur.
+
+| Donnees | Protection applicative actuelle |
+|---|---|
+| PostgreSQL : `id`, `owner_id`, rattachements, dates, tailles | En clair ; utilises pour les relations et autorisations |
+| PostgreSQL : titre, auteur, categorie, nom du fichier | AES-GCM via `DocumentMapper`, si `app.cipher.enabled=true` |
+| PostgreSQL : snapshots complets Lucene / BERT / Lucene Vector | AES-GCM via `CipherService`, si le chiffrement et la persistance sont actives |
+| Qdrant / Milvus : `documentId`, chunks, metadonnees, filtres et vecteurs | En clair du point de vue applicatif ; pas de chiffrement du payload |
+| Fichiers originaux sur FS / NetApp / S3 | Pas de chiffrement applicatif ; protection du support/serveur a configurer |
+| Mots de passe | Hachage BCrypt, pas de chiffrement reversible |
+
+La cle de chiffrement est commune a l'application, pas une cle par utilisateur.
+La cle de demonstration de la configuration n'est pas un secret de production.
+Un snapshot chiffre en PostgreSQL ne chiffre pas la collection vivante reconstruite
+dans Qdrant ou Milvus. Les embeddings ne sont pas des donnees anonymisees et
+doivent aussi etre proteges.
+
+Le cloisonnement protege les appels passant par l'application, pas un acces
+direct d'un client a la base vectorielle. Pour un deploiement reel, garder les
+stores sur un reseau prive, activer authentification/TLS et chiffrer volumes,
+fichiers et sauvegardes selon les exigences de l'infrastructure. Chiffrer aussi
+les textes du payload, ou ne plus les y stocker, demanderait une evolution
+explicite des filtres, du reranking et de la restitution des extraits.
+
+## Synthese IA et gateway
+
+### LiteLLM et vLLM / Mistral (chemin recommande)
+
+LiteLLM est un proxy optionnel, pas un serveur d'inference. Le profil `litellm`
+conserve l'adaptateur applicatif pour les droits documentaires, les prompts bornes
+et les citations, et delegue les appels aux modeles au proxy :
+
+```text
+Client -> APIM / ingress eventuel -> Spring Boot (recherche, droits, extraits)
+       -> LiteLLM -> vLLM (modele Mistral servi sur la VM)
+```
+
+LiteLLM couvre les fonctions de gateway LLM et de routeur de deploiements.
+Il ne remplace pas toute l'APIM Gravitee (gouvernance des autres API,
+souscriptions, portail, cycle de vie). Authentification et controles d'acces
+doivent preceder un eventuel classifieur de complexite. Les droits sur les
+documents restent dans le backend ; un identifiant `user` transmis au proxy
+n'est pas une ACL documentaire.
+
+Pour plusieurs modeles de base, deployer plusieurs instances vLLM et les
+declarer dans `config/litellm.yml`. Une instance vLLM peut repartir un modele sur
+plusieurs GPU, mais n'est pas un routeur entre tous les modeles disponibles.
+Le routage automatique par complexite propose par LiteLLM est en beta et
+**n'est pas active ici** : ses regles et sa qualite doivent etre evaluees.
+
+Comparaison retenue pour le POC, sans reprendre les benchmarks des fournisseurs :
+
+| Option | Interet | Choix |
+|---|---|---|
+| [LiteLLM](https://docs.litellm.ai/docs/providers/vllm) | Provider `hosted_vllm`, API OpenAI, cache exact avec namespace/TTL par requete | Retenu ; reutilise notre contrat HTTP et permet de controler explicitement le cache |
+| [Bifrost](https://github.com/maximhq/bifrost) | Gateway Go, API compatible, routage et plugins | Alternative valable ; pas de gain mesure justifiant une autre integration pour ce POC |
+| [Portkey](https://github.com/Portkey-AI/gateway) | Routage conditionnel, retries, fallbacks, gateway auto-hebergeable | Alternative valable ; aucun besoin ici ne justifie de changer de contrat |
+
+L'overlay `docker-compose.ai.yml` est commun aux six variantes existantes.
+Il ajoute LiteLLM **1.104.2** et Valkey **9.1.2**, images epinglees par digest,
+sans publier leurs ports. Le cache Valkey est authentifie, borne a 128 Mo,
+en memoire uniquement (ni RDB, ni AOF, ni volume persistant). Le proxy utilise
+un fichier declaratif, sans base LiteLLM ni UI d'administration exposee.
+La cle du proxy est reservee au backend : ne jamais la transmettre au navigateur.
+Les cles virtuelles, budgets persistants et RBAC de gestion LiteLLM ne sont pas
+configures dans ce mode sans base ; les ajouter necessiterait une configuration
+distincte. La limite applicative reste de deux syntheses simultanees par instance.
+
+Exemple PowerShell, apres configuration du secret `APP_BOOTSTRAP_PASSWORD` :
+
+```powershell
+$env:APP_AI_GATEWAY_API_KEY = 'sk-' + [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$env:APP_AI_CACHE_PASSWORD = [Convert]::ToHexString([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+$env:APP_AI_VLLM_URL = 'http://vllm.internal:8000/v1'
+$env:APP_AI_VLLM_MODEL = 'mistral'
+# Renseigner la cle deja active sur le serveur vLLM, sans la journaliser.
+$env:APP_AI_VLLM_API_KEY = '<cle du serveur vLLM>'
+docker compose -f docker-compose.qdrant.yml -f docker-compose.ai.yml up -d --build
+```
+
+Pour le cluster, remplacer le premier fichier par `docker-compose.qdrant-cluster.yml`.
+L'overlay active l'IA par defaut ; `APP_AI_ENABLED=false` la desactive.
+Sans overlay, les profils et les appels directs existants restent inchanges.
+Pour une gateway deja deployee, activer le profil Spring `litellm`, definir
+`APP_AI_ENABLED=true`, `APP_AI_GATEWAY_URL` et `APP_AI_GATEWAY_API_KEY`, et creer
+sur le proxy les alias du catalogue applicatif.
+
+| Variable | Usage |
+|---|---|
+| `APP_AI_VLLM_URL` | URL privee du serveur vLLM, avec `/v1` ; defaut Docker `http://host.docker.internal:8000/v1` |
+| `APP_AI_VLLM_MODEL` | Nom expose par `/v1/models`, defaut `mistral` ; correspondre a `--served-model-name`, pas necessairement au chemin des poids |
+| `APP_AI_VLLM_API_KEY` | Cle du serveur vLLM ; obligatoire dans l'overlay, a activer aussi sur vLLM |
+| `APP_AI_GATEWAY_API_KEY` | Cle du proxy prive, au moins 32 caracteres ; obligatoire si le profil LiteLLM et l'IA sont actifs |
+| `APP_AI_DEFAULT_MODEL` | Alias selectionne en premier dans l'UI, defaut `mistral-local` |
+| `APP_AI_CACHE_ENABLED` | Cache de reponses exact, desactive par defaut |
+| `APP_AI_CACHE_TTL_SECONDS` | Duree de vie de 1 a 300 secondes, defaut 60 |
+| `APP_AI_VLLM_MODEL_REVISION` | Revision du modele servi, defaut `1` ; changer lors d'un remplacement des poids derriere le meme alias |
+
+L'alias `mistral-local` pointe vers `hosted_vllm/<nom servi>` avec l'URL explicite
+de l'operateur, **jamais vers l'API cloud Mistral par defaut**. `ollama-mistral`
+reste disponible comme chemin optionnel via LiteLLM et les variables Ollama.
+L'overlay ne demarre ni vLLM ni Ollama et ne telecharge aucun poids.
+Les processus d'inference, leur chat template Mistral, les ressources CPU/GPU,
+l'authentification et TLS sont a configurer sur la VM dediee.
+
+**Cache et autorisations.** Le navigateur ne peut choisir ni namespace, ni TTL,
+ni identite de cache. Le backend produit des identifiants HMAC opaques a partir
+de l'utilisateur connecte, des sources, du prompt complet, des parametres et
+de la revision du modele. Deux utilisateurs autorises sur les memes extraits
+ont des caches distincts. Une modification des extraits, sources, question ou
+revision produit un autre namespace. Sans opt-in, le backend impose `no-cache`
+et `no-store`. Apres l'appel IA, les droits sont revus : toute perte d'acces
+fait retirer la synthese et les fragments concernes. Les anciennes entrees
+deviennent inaccessibles via l'application et expirent au TTL ; cela n'est pas
+une suppression immediate des octets dans la memoire du cache.
+Pas de cache semantique, ni de journalisation des messages dans les callbacks,
+ni de telemetrie LiteLLM. Proteger aussi les logs du serveur d'inference et
+les reseaux/volumes/sauvegardes de l'infrastructure.
+
+**Indexes et embeddings.** Ajouter un LLM de synthese ne demande pas un index
+ou des embeddings par LLM : tous consomment les memes extraits autorises.
+La recherche conserve son modele d'embedding (MiniLM par defaut) et son index.
+Changer ce modele d'embedding exige de reindexer les documents et de vectoriser
+les requetes dans le meme espace ; deux modeles de meme dimension ne sont pas
+pour autant compatibles. Le cache exact de LiteLLM n'ajoute aucun embedding.
+
+**Contexte de synthese.** L'apercu de recherche (280 caracteres pour les moteurs
+vectoriels) n'est pas le contexte RAG. Lors d'une synthese optionnelle, le backend
+relit le texte source via le parser configure, uniquement pour les documents
+selectionnes et autorises, sans reindexation ni modification des embeddings.
+PDFBox extrait toutes les pages des PDF textuels ; les limites et la qualite OCR
+restent celles du parser. Les images PNG/JPEG/TIFF/BMP/GIF sont relues avec
+Tesseract, pas comme des PDF. Cette relecture est effectuee dans la limite existante
+de syntheses concurrentes, mais ajoute un cout de lecture/OCR par generation.
+Une mise en charge doit mesurer ce cout avant de dimensionner le service.
+
+Le texte extrait des petits documents est conserve integralement s'il tient
+dans le budget. Pour les plus longs, plusieurs passages sont selectionnes avec
+une analyse lexicale francaise de la question, remis dans l'ordre du document et
+separes par un marqueur d'omission. Le budget `app.ai.max-context-chars` inclut
+la serialisation JSON des sources et est partage entre elles : le premier
+document ne doit pas priver les suivants de contexte. `summary.sources[].partial`
+et la mention UI « contexte abrege » signalent une selection partielle du texte
+extrait, pas une garantie d'exhaustivite OCR. Une extraction vide/echouee bloque
+la synthese avec une erreur explicite, jamais un repli sur l'apercu tronque.
+Les droits sont verifies avant la lecture, juste avant l'envoi et apres generation.
+Le prompt conserve negations, valeurs, dates et conditions, et distingue
+l'information absente d'un extrait de celle absente du document entier.
+
+Le catalogue IA expose `hosting` (`LOCAL`, `CLOUD`, `UNSPECIFIED`) et `displayName`,
+sans credential ni URL interne. Bedrock est marque `CLOUD` et affiche le modele
+amont, pas seulement l'alias LiteLLM. L'UI avertit avant activation que du texte
+source, parfois integral pour les petits documents, part vers le cloud.
+Un changement de modele decoche la synthese pour renouveler ce choix.
+Pour un endpoint externe personnalise, declarer explicitement son hebergement ;
+les alias on-premise acceptent `APP_AI_MISTRAL_HOSTING` / `APP_AI_OLLAMA_HOSTING`.
+
+Test reproductible dans une stack locale jetable :
+
+```powershell
+python scripts\smoke-ai-gateway.py
+```
+
+Ce script utilise le vrai proxy et le vrai cache, une API vLLM **simulee** et
+des PDF synthetiques : transport, authentification, isolation du cache entre
+utilisateurs partageant les memes sources, TTL, opt-out, revocation pendant
+la generation et panne du serveur IA. Il ne valide pas une inference Mistral
+reelle ni la capacite de la VM. Tous les conteneurs/reseaux de fixture sont
+supprimes a la fin, sans toucher aux autres stacks.
+
+### AWS Bedrock Mantle via LiteLLM (option cloud)
+
+Bedrock fournit l'inference, pas l'hebergement de l'application Spring Boot.
+Le POC peut rester sur le NAS : seuls les extraits autorises necessaires a la
+synthese sont envoyes au modele, si l'utilisateur coche la synthese.
+Ce chemin est **cloud, pas on-premise**. Valider region, contrats, retention,
+logs et politique de donnees avant d'y envoyer des donnees reelles.
+`us-east-1` correspond aux Etats-Unis ; une cle API ne vaut pas autorisation
+de traiter des donnees sensibles dans cette region.
+
+Le profil Spring `bedrock` expose uniquement l'alias `bedrock` via LiteLLM.
+Les alias directs Ollama/vLLM sont desactives dans ce profil ; ils restent
+inchanges dans les autres profils. Les droits, citations, contexte borne,
+recontrole des droits apres generation et cache isole par utilisateur sont
+les memes que pour le chemin on-premise.
+
+`config/litellm-bedrock.yml` utilise le provider natif
+`bedrock_mantle/<identifiant du modele>`, pas le provider cloud OpenAI.
+L'authentification de l'upstream emploie la cle API Bedrock en Bearer.
+La cle AWS reste dans le proxy ; l'application utilise une autre cle pour
+authentifier ses appels a LiteLLM. Le proxy impose `store: false` et n'impose
+pas de temperature, pour supporter les modeles de raisonnement. Cela ne
+remplace pas la validation de la politique de retention du fournisseur.
+
+Variables dans le fichier IA prive du NAS, sans guillemets ni `export` :
+
+```dotenv
+APP_AI_BEDROCK_URL=https://bedrock-mantle.us-east-1.api.aws/openai/v1
+APP_AI_BEDROCK_MODEL=openai.gpt-5.4
+APP_AI_BEDROCK_API_KEY=<renseigner uniquement sur le NAS>
+APP_AI_BEDROCK_MODEL_REVISION=1
+APP_AI_CACHE_ENABLED=false
+APP_AI_CACHE_TTL_SECONDS=60
+```
+
+La base URL depend du modele : `/openai/v1` pour GPT-5.4, `/v1` pour
+GPT-OSS et de nombreux autres modeles. Retirer les guillemets ou `%22`
+provenant d'un copier-coller ; ne pas convertir arbitrairement tous les
+endpoints en `/v1`. Le script NAS valide les deux chemins.
+Le nom commercial ou la presence du mot `openai` dans une URL ne suffisent
+pas a determiner le modele. Le catalogue se consulte **sans prompt** :
+
+```bash
+python3 /volume1/docker/apps/recherche-doc-ai/list-bedrock-models.py \
+  --env-file /volume1/docker/apps/recherche-doc-ai.env
+```
+
+Le helper lit la cle uniquement dans l'environnement/fichier prive,
+n'affiche que les identifiants de modeles et refuse les redirections.
+Le catalogue Mantle utilise `/v1/models`, independamment du prefixe
+d'inference. Il n'est pas disponible sur l'endpoint Bedrock Runtime.
+L'acces au catalogue ne prouve pas que les droits d'inference sont accordes.
+
+Le script NAS prepare les cles du proxy/cache separement, uniquement si elles
+ne sont pas deja presentes. Le modele et la cle AWS ne sont jamais inventes
+ou choisis par defaut. Incrementer `APP_AI_BEDROCK_MODEL_REVISION` lors d'un
+changement de revision derriere le meme identifiant ; l'identifiant du modele
+fait aussi partie de la version du cache.
+
+Regression du vrai proxy avec GPT-5.4 **simule**, y compris le pont
+Chat Completions -> Responses :
+
+```powershell
+python scripts\smoke-ai-gateway.py --backend bedrock
+python -m unittest discover -s scripts -p test_list_bedrock_models.py
+```
+
+Ces commandes n'appellent pas AWS. Elles utilisent la meme fixture jetable
+que le test vLLM, sans donnees ni comptes existants.
+Sources : [endpoints AWS](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html),
+[Chat Completions et catalogue](https://docs.aws.amazon.com/bedrock/latest/userguide/inference-chat-completions.html),
+[provider LiteLLM Mantle](https://docs.litellm.ai/docs/providers/bedrock_mantle).
+
+### Appels directs (sans profil LiteLLM)
 
 L'IA est desactivee par defaut. Activer `APP_AI_ENABLED=true` et configurer
 les serveurs/modeles dans `app.ai.models`. Le navigateur choisit uniquement
@@ -186,6 +486,10 @@ echauffement. L'application est limitee a **2 CPU / 4 Go**, avec MiniLM pour
 les moteurs vectoriels, sans synthese IA pendant la mesure. Les backends
 restent sur le meme hote Docker ; leurs budgets et algorithmes different :
 ce petit corpus n'etablit ni une capacite maximale ni un classement general.
+Ces mesures ont ete faites avant la remise a niveau du socle
+(Spring Boot 4.0.0, Lucene 10.3.2, DJL 0.36.0, Qdrant 1.18.3) :
+elles restent une reference historique, pas des performances certifiees
+pour les nouvelles versions.
 
 | Moteur / store | Requetes/s | p95 (ms) | p99 (ms) |
 |---|---:|---:|---:|
@@ -575,7 +879,8 @@ Le moyen le plus simple de le tester est le fichier `docker-compose.qdrant.yml` 
 Store vectoriel distant base sur l'API REST v2 de Milvus:
 
 - creation automatique de la collection au premier `upsert`
-- collection creee avec `documentId` comme cle primaire, champ vectoriel `embedding` et champs dynamiques actives
+- collection creee avec `pointId` comme cle primaire (`documentId * 10000 + chunkIndex`),
+  champ scalaire `documentId`, champ vectoriel `embedding` et champs dynamiques actives
 - filtres `category`, `author`, `dateFrom`, `dateTo` traduits en expression Milvus
 - `replaceAll` effectue un drop/recreate puis un rechargement par batchs
 
@@ -691,18 +996,39 @@ Ce decouplage evite toute confusion quand on change `app.indexer.default` ou `ap
 
 ## Stack technique
 
-- Java 25
-- Spring Boot 4
-- Maven
-- PostgreSQL
-- Apache Lucene
-- Apache PDFBox
-- Apache Tika
-- Tesseract
-- DJL
-- Hugging Face sentence-transformers
-- Python 3.11 + FastAPI + FAISS (service `faiss-service/`)
-- AWS SDK v2 S3 (compatible MinIO)
+Versions stables retenues lors de la remise a niveau du 9 octobre 2026 :
+
+| Composant | Version |
+|---|---|
+| Java | 25 LTS |
+| Spring Boot / springdoc | 4.1.1 / 3.1.1 |
+| Maven dans Docker | 3.10.0 |
+| PostgreSQL dans les Compose | 17.11 |
+| Apache Lucene | 10.5.2, tous les modules alignes |
+| DJL API / tokenizers / PyTorch engine | 0.38.0, tous les modules alignes |
+| PDFBox / Tess4j / Tika | 3.0.8 / 5.20.0 / 3.3.2 |
+| commonmark / jsoup / commons-lang3 | 0.30.0 / 1.23.2 / 3.21.0 |
+| AWS SDK v2 S3 | 2.55.13 |
+| FAISS : Python / FastAPI / Uvicorn | 3.13.14 / 0.143.0 / 0.54.0 |
+| FAISS / NumPy | 1.15.1 / 2.5.3 |
+| Qdrant / gateway Nginx | 1.19.2 / 1.28.2 |
+| Milvus | 2.6.25 standalone, contrat REST v2 conserve |
+
+Les images Java utilisent Ubuntu Noble LTS ; le service Python utilise
+Debian Bookworm. NumPy 2.5 exige Python >= 3.12 ; ne pas mettre a jour les
+requirements du service FAISS en conservant son ancienne image Python 3.11.
+MapStruct reste sur 1.6.3 : les prereleases ne sont pas retenues.
+Tika 4, Milvus 3 et un changement de version majeure PostgreSQL restent des
+migrations separees, non effectuees par cette remise a niveau.
+Le modele d'embedding reste `sentence-transformers/all-MiniLM-L6-v2`.
+
+Avant une mise a jour d'un deploiement existant, sauvegarder PostgreSQL,
+les documents, les stores vectoriels et la cle de chiffrement. Les versions
+Qdrant mono-noeud/cluster/temoin sont figees et identiques par defaut ;
+`QDRANT_IMAGE` permet une substitution explicite. Ne pas recycler un volume
+PostgreSQL 17 pour une autre version majeure sans migration.
+Un changement de modele ou de dimension d'embedding exige une nouvelle
+collection et une reindexation, pas un melange de vecteurs incompatibles.
 
 ## Modules Maven
 
@@ -741,7 +1067,7 @@ Important :
 
 ```bash
 mvn install
-docker run --name recherche-postgres -e POSTGRES_DB=recherche_documentaire -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17-alpine
+docker run --name recherche-postgres -e POSTGRES_DB=recherche_documentaire -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17.11-alpine
 java -jar ./recherche-documentaire-webapp-demo/target/poc-recherche-documentaire-1.0.0-SNAPSHOT.jar
 ```
 
@@ -1150,18 +1476,81 @@ mvn test
 Le workflow GitHub Actions `/.github/workflows/build.yml` execute maintenant :
 
 - `mvn verify`
+- les regressions FAISS natives (scope avant top-k, filtres, snapshots, concurrence)
 - un smoke test Docker du mode `lucene`
+- un smoke test Docker du mode `lucene-vector`
 - un smoke test Docker Compose du mode `faiss`
 - un smoke test Docker Compose du mode `qdrant`
+- un smoke test Docker Compose du mode `qdrant-cluster`
 - un smoke test Docker Compose du mode `milvus`
 - la publication des images GHCR de l'application Spring Boot et du service `faiss-service`
 
-Le deploiement NAS s'appuie sur `deploy/deploy-github-documents.sh`, qui demarre desormais :
+Le script local `deploy/deploy-github-documents.sh` est ignore par Git. Il est
+installe sur le NAS dans `/volume1/docker/deploy/deploy-github-documents.sh`,
+avec des fins de ligne **LF**. Il s'execute directement sur le NAS, utilise
+`sudo -n /usr/local/bin/docker` et **ne compile rien** : pull/run seulement,
+ou chargement prealable d'une image construite sur le poste de developpement.
+L'execution manuelle sous le compte de deploiement reste locale. Le webhook
+PHP existant tourne sous `http` : pour conserver ce chemin, le script utilise
+uniquement pour ce compte le relais SSH local existant vers le compte de deploiement,
+avec sa cle privee et son `known_hosts` dans `/var/services/web/.ssh`.
+La verification de cle d'hote est stricte ; elle n'est jamais desactivee.
+Le script doit etre lisible/executable (`755`), mais les fichiers de secrets
+restent reserves au compte de deploiement (`600`).
 
-- une instance `lucene`
-- une instance `lucene-vector`
-- une instance `bert` + store `faiss-remote`
-- une instance `bert` + store `qdrant`
-- les services de support `faiss` et `qdrant`
+Le script conserve PostgreSQL existant tel que defini dans le fichier prive,
+sans le recreer ni changer ses identifiants. Il demarre une instance `bert`
+avec Qdrant, et facultativement LiteLLM/Valkey avec Bedrock. FAISS et les
+autres variantes ne sont pas demarres par ce script. Qdrant, LiteLLM et le
+cache n'ont pas de port publie ; seule l'application expose le port `8084`.
+Configurer TLS et les restrictions reseau sur son ingress pour un usage reel.
 
-Qdrant utilise l'image officielle `qdrant/qdrant:latest`, il n'y a donc pas d'image Qdrant custom a publier dans GHCR.
+```bash
+bash /volume1/docker/deploy/deploy-github-documents.sh --prepare-env
+```
+
+Cette preparation conserve la datasource du conteneur existant et cree, en
+mode `600`, `/volume1/docker/apps/recherche-doc.env` (base, bootstrap, activation IA)
+et `/volume1/docker/apps/recherche-doc-ai.env` (cles proxy/cache/AWS, modele).
+Les secrets existants ne sont pas remplaces. Le mot de passe initial admin
+est dans `APP_BOOTSTRAP_PASSWORD`, jamais dans le log de deploiement.
+Les comptes de demonstration sont desactives.
+
+Copier `config/litellm-bedrock.yml` dans
+`/volume1/docker/apps/recherche-doc-ai/litellm-bedrock.yml` et le helper de
+catalogue dans ce meme repertoire. Le YAML ne contient que des references
+d'environnement : le script le rend lisible (`644`) par le proxy sans
+capacites privilegiees. Les fichiers contenant les secrets restent en `600`.
+Renseigner la cle et le modele dans le
+fichier IA prive, puis `APP_AI_ENABLED=true` dans le fichier applicatif.
+Par defaut, l'IA reste desactivee et aucune cle AWS n'est necessaire.
+
+```bash
+bash /volume1/docker/deploy/deploy-github-documents.sh
+```
+
+Les preconditions et images sont controlees avant d'arreter les conteneurs.
+Le succes exige le readiness Spring **apres le bootstrap**, pas seulement
+un processus Tomcat en cours de demarrage. L'ancien snapshot incompatible
+doit etre sauvegarde/purge explicitement comme explique dans le depannage ;
+le script ne supprime jamais de document ou snapshot automatiquement.
+Les volumes documentaires et le cache DJL du conteneur existant sont conserves.
+
+Pour tester une image construite ailleurs et deja chargee sur le NAS, sans
+changer le chemin GHCR des prochains deploiements automatiques :
+
+```bash
+DEPLOY_APP_IMAGE=<image-locale:tag> DEPLOY_APP_PULL=false \
+  bash /volume1/docker/deploy/deploy-github-documents.sh
+```
+
+Ces surcharges sont valables pour cette execution seulement. Le chemin
+habituel retrouve l'image GHCR `latest` : publier les nouveaux profils et
+correctifs dans cette image **avant** de relancer ce chemin, pour ne pas
+revenir a une ancienne version incompatible. Avec l'IA activee, le script
+refuse une image sans profil Bedrock avant d'arreter les services existants.
+
+Les Compose Qdrant utilisent l'image officielle `qdrant/qdrant:v1.19.2` par
+defaut, pas un tag `latest` flottant. Il n'y a pas d'image Qdrant custom a
+publier dans GHCR. Le script NAS utilise cette meme version pour Qdrant et
+les memes images LiteLLM/Valkey epinglees par digest que les tests locaux.

@@ -8,7 +8,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.0</version>
+        <version>4.1.1</version>
         <relativePath/>
     </parent>
 
@@ -33,7 +33,11 @@
         <maven.compiler.target>25</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <mapstruct.version>1.6.3</mapstruct.version>
-        <springdoc.version>3.0.0</springdoc.version>
+        <springdoc.version>3.1.1</springdoc.version>
+        <lucene.version>10.5.2</lucene.version>
+        <djl.version>0.38.0</djl.version>
+        <pdfbox.version>3.0.8</pdfbox.version>
+        <tika.version>3.3.2</tika.version>
     </properties>
 
     <dependencies>
@@ -81,4 +85,3 @@
         </plugins>
     </build>
 </project>
-

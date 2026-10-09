@@ -1,0 +1,40 @@
+model_list:
+  - model_name: mistral-local
+    litellm_params:
+      model: os.environ/LITELLM_VLLM_MODEL
+      api_base: os.environ/APP_AI_VLLM_URL
+      api_key: os.environ/APP_AI_VLLM_API_KEY
+    model_info:
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+  - model_name: ollama-mistral
+    litellm_params:
+      model: os.environ/LITELLM_OLLAMA_MODEL
+      api_base: os.environ/APP_AI_OLLAMA_URL
+    model_info:
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+
+litellm_settings:
+  telemetry: false
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+  cache: true
+  cache_params:
+    type: redis
+    host: ai-cache
+    port: 6379
+    password: os.environ/REDIS_PASSWORD
+    mode: default_off
+    ttl: 60
+    supported_call_types: ["acompletion"]
+
+router_settings:
+  num_retries: 1
+  timeout: 50
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  disable_spend_logs: true
+  store_prompts_in_spend_logs: false
+  forward_client_headers_to_llm_api: false

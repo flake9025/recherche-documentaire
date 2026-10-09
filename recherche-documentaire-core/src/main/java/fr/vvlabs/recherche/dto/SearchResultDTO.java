@@ -19,7 +19,7 @@ public class SearchResultDTO {
     private String summaryError;
 
     public record SummaryDTO(String text, String model, List<SummarySourceDTO> sources) { }
-    public record SummarySourceDTO(int number, String documentId, String title, String fileUrl) { }
+    public record SummarySourceDTO(int number, String documentId, String title, String fileUrl, boolean partial) { }
 
     /** Temps de génération de l'embedding BERT (ms). Carrier interne, non exposé en API. */
     @JsonIgnore

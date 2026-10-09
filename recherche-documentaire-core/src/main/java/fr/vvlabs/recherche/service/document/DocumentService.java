@@ -7,6 +7,7 @@ import fr.vvlabs.recherche.model.DocumentEntity;
 import fr.vvlabs.recherche.repository.DocumentRepository;
 import fr.vvlabs.recherche.service.parser.OCRService;
 import fr.vvlabs.recherche.service.parser.OCRServiceFactory;
+import fr.vvlabs.recherche.service.parser.OCRType;
 import fr.vvlabs.recherche.service.storage.StorageServiceFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -125,7 +126,7 @@ public class DocumentService {
     }
 
     /**
-     * Lit le contenu OCR d'un document avec le moteur par defaut.
+     * Lit le contenu avec Tesseract pour les images, sinon avec le parser par defaut.
      *
      * @param documentDTO document a lire
      * @return texte OCR ou chaine vide si l'OCR est desactive
@@ -136,7 +137,10 @@ public class DocumentService {
             log.debug("OCR is disabled");
             return "";
         }
-        return getFileText(documentDTO, ocrServiceFactory.getDefaultOCRService().getType());
+        String filename = documentDTO.getNomFichier().toLowerCase(Locale.ROOT);
+        String parser = filename.matches(".*\\.(png|jpe?g|tiff?|bmp|gif)$")
+                ? OCRType.TESSERACT : ocrServiceFactory.getDefaultOCRService().getType();
+        return getFileText(documentDTO, parser);
     }
 
     /**

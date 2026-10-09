@@ -22,6 +22,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.DataInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -188,7 +191,7 @@ class BertEmbeddingsIndexServiceTest {
                 "doc.pdf",
                 LocalDateTime.of(2025, 12, 24, 10, 30, 15),
                 "contenu",
-                new byte[]{7, 8, 9}
+                new byte[]{7, 8, 9, 10, 11, 12, 13, 14}
         );
 
         BertEmbeddingsIndexEntity entity = new BertEmbeddingsIndexEntity()
@@ -198,7 +201,8 @@ class BertEmbeddingsIndexServiceTest {
 
         when(indexRepository.findByIndexName("bert_embeddings")).thenReturn(Optional.of(entity));
         when(cipherService.decrypt(entity.getIndexData())).thenReturn(payload);
-        when(bertEmbeddingsService.deserialize(new byte[]{7, 8, 9})).thenReturn(new float[]{7.0f, 8.0f});
+        when(bertEmbeddingsService.deserialize(new byte[]{7, 8, 9, 10, 11, 12, 13, 14}))
+                .thenReturn(new float[]{7.0f, 8.0f});
 
         service.loadDocumentIndexFromDatabase();
 
@@ -233,6 +237,11 @@ class BertEmbeddingsIndexServiceTest {
 
         verify(cipherService).encrypt(bytesCaptor.capture());
         assertThat(bytesCaptor.getValue().length).isGreaterThan(0);
+        try (var input = new DataInputStream(new ByteArrayInputStream(bytesCaptor.getValue()))) {
+            assertThat(input.readInt()).isEqualTo(0x42455254);
+            assertThat(input.readInt()).isEqualTo(1);
+            assertThat(input.readInt()).isEqualTo(1);
+        }
 
         verify(indexRepository).save(indexEntityCaptor.capture());
         BertEmbeddingsIndexEntity saved = indexEntityCaptor.getValue();
@@ -251,6 +260,75 @@ class BertEmbeddingsIndexServiceTest {
         assertThat(bertEmbeddingsStore.count()).isZero();
     }
 
+    @Test
+    void legacySnapshotIsRejectedBeforeReplacingTheStore() throws Exception {
+        byte[] payload = serializeEmbedding(42L, "Titre", "Auteur", "rapport", "doc.pdf",
+                null, "contenu", new byte[8]);
+        assertSnapshotRejected(java.util.Arrays.copyOfRange(payload, 8, payload.length));
+    }
+
+    @Test
+    void unknownSnapshotVersionIsRejectedBeforeReplacingTheStore() throws Exception {
+        try (var output = new ByteArrayOutputStream(); var data = new DataOutputStream(output)) {
+            data.writeInt(0x42455254);
+            data.writeInt(2);
+            data.writeInt(0);
+            assertSnapshotRejected(output.toByteArray());
+        }
+    }
+
+    @Test
+    void truncatedSnapshotIsRejectedBeforeReplacingTheStore() throws Exception {
+        byte[] payload = serializeEmbedding(42L, "Titre", "Auteur", "rapport", "doc.pdf",
+                null, "contenu", new byte[8]);
+        assertSnapshotRejected(java.util.Arrays.copyOf(payload, payload.length - 1));
+    }
+
+    @Test
+    void oversizedSnapshotFieldIsRejectedWithoutAllocatingItsDeclaredLength() throws Exception {
+        try (var output = new ByteArrayOutputStream(); var data = new DataOutputStream(output)) {
+            data.writeInt(0x42455254);
+            data.writeInt(1);
+            data.writeInt(1);
+            data.writeLong(42L);
+            data.writeInt(0);
+            data.writeInt(1);
+            data.writeInt(Integer.MAX_VALUE);
+            assertSnapshotRejected(output.toByteArray());
+        }
+    }
+
+    @Test
+    void repositoryFailureIsNotTreatedAsAnEmptySnapshot() {
+        ReflectionTestUtils.setField(service, "useDatabase", true);
+        var original = new BertEmbeddingDocument(42L, "Original", "", "rapport", "doc.pdf",
+                null, "original text", new float[]{1, 0});
+        bertEmbeddingsStore.upsert(original);
+        when(indexRepository.findByIndexName("bert_embeddings")).thenThrow(new IllegalStateException("Database unavailable"));
+
+        assertThatThrownBy(service::loadDocumentIndexFromDatabase)
+                .isInstanceOf(IllegalStateException.class).hasMessage("Database unavailable");
+        assertThat(bertEmbeddingsStore.findAll()).containsExactly(original);
+        verifyNoInteractions(cipherService);
+    }
+
+    private void assertSnapshotRejected(byte[] payload) throws Exception {
+        ReflectionTestUtils.setField(service, "useDatabase", true);
+        var original = new BertEmbeddingDocument(42L, "Original", "", "rapport", "doc.pdf",
+                null, "original text", new float[]{1, 0});
+        bertEmbeddingsStore.upsert(original);
+        var entity = new BertEmbeddingsIndexEntity().setIndexName("bert_embeddings").setIndexData(new byte[]{1});
+        when(indexRepository.findByIndexName("bert_embeddings")).thenReturn(Optional.of(entity));
+        when(cipherService.decrypt(entity.getIndexData())).thenReturn(payload);
+
+        assertThatThrownBy(service::loadDocumentIndexFromDatabase)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Snapshot BERT invalide ou incompatible")
+                .hasCauseInstanceOf(IOException.class);
+        assertThat(bertEmbeddingsStore.findAll()).containsExactly(original);
+        verifyNoInteractions(bertEmbeddingsService);
+    }
+
     private static byte[] serializeEmbedding(
             long documentId,
             String title,
@@ -263,6 +341,8 @@ class BertEmbeddingsIndexServiceTest {
     ) throws Exception {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
              DataOutputStream dos = new DataOutputStream(baos)) {
+            dos.writeInt(0x42455254);
+            dos.writeInt(1);
             dos.writeInt(1);
             dos.writeLong(documentId);
             dos.writeInt(0); // chunkIndex

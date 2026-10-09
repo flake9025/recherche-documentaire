@@ -13,6 +13,9 @@ import fr.vvlabs.recherche.service.storage.StorageServiceFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -32,6 +35,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class DocumentServiceTest {
+    @TempDir
+    private Path temporaryDirectory;
 
     @Mock
     private DocumentRepository repository;
@@ -197,5 +202,21 @@ class DocumentServiceTest {
         assertThat(result).isEqualTo("TEXT");
         verify(ocrService).getDocumentDatas(eq("doc.pdf"), any(), eq(DataType.RAPPORT));
     }
-}
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PNG", "jpg", "jpeg", "tiff", "bmp", "gif"})
+    void getFileText_imagesUseTesseractRatherThanTheDefaultPdfParser(String extension) throws Exception {
+        String filename = "scan." + extension;
+        var dto = new DocumentDTO().setCategorie("RAPPORT").setNomFichier(filename);
+        Path file = temporaryDirectory.resolve(filename);
+        Files.writeString(file, "fixture");
+        when(ocrServiceFactory.isOcrEnabled()).thenReturn(true);
+        when(ocrServiceFactory.getOCRService("tesseract")).thenReturn(ocrService);
+        when(storageServiceFactory.getDefaultStorageService()).thenReturn(storageService);
+        when(storageService.getPath(filename)).thenReturn(file);
+        when(ocrService.getDocumentDatas(eq(filename), any(), eq(DataType.RAPPORT))).thenReturn("IMAGE_TEXT");
+
+        assertThat(service.getFileText(dto)).isEqualTo("IMAGE_TEXT");
+        verify(ocrServiceFactory, never()).getDefaultOCRService();
+    }
+}

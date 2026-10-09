@@ -10,3 +10,6 @@ target/
 /tesseract-ocr/
 __pycache__/
 *.pyc
+.env
+.env.*
+*.env
